@@ -1,0 +1,31 @@
+# Project: yuki
+# Author: Huan Du (huan.du.work@gmail.com)
+
+CC   = gcc.exe
+LINKOBJ  = yuki_var_test.o
+OBJ  = $(filter-out $(LINKOBJ),$(patsubst %.c,%.o,$(wildcard *.c)))
+LIBS =  -L"d:/Dev-Cpp/lib"
+INCS =  -I"d:/Dev-Cpp/include"
+BIN  = yuki_var_test.exe
+CFLAGS = $(INCS) -std=c99
+RM = rm -f
+
+.PHONY: all all-before all-after clean clean-custom
+
+all: all-before bin all-after
+
+all-before:
+    #echo $(BIN)
+    #echo $(OBJ)
+    #echo $(LINKOBJ)
+
+clean: clean-custom
+	${RM} $(OBJ) $(BIN)
+
+bin: $(OBJ) $(BIN)
+
+$(BIN): $(LINKOBJ)
+	$(CC) $< $(OBJ) -o $@ $(LIBS)
+
+%.o: %.c
+	$(CC) -c $< -o $@ $(CFLAGS)

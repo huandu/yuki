@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "yuki_var.h"
+#include "yuki.h"
 
 int main()
 {
