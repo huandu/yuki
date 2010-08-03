@@ -24,8 +24,9 @@ typedef enum _YVAR_TYPE {
 
 typedef enum _YVAR_OPTIONS {
     YVAR_OPTION_DEFAULT = 0,
-    YVAR_OPTION_HOLD_RESOURCE = 0x1, // need to free memory
-    YVAR_OPTION_SORTED = 0x2, // array is sorted
+    YVAR_OPTION_READONLY = 0x1,
+    YVAR_OPTION_HOLD_RESOURCE = 0x2, // need to free memory
+    YVAR_OPTION_SORTED = 0x4, // array is sorted
 } YVAR_OPTIONS;
 
 typedef int8_t ybool_t;
@@ -81,6 +82,14 @@ typedef struct _ymap_t {
     yvar_t keys;
     yvar_t values;
 } ymap_t;
+
+typedef struct _ytable_t {
+    yvar_t table_name;
+    yvar_t condition;
+    yvar_t params;
+    yvar_t hash_key;
+    yvar_t sql;
+} ytable_t;
 
 #ifdef __cplusplus
 }
