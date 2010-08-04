@@ -81,7 +81,7 @@ inline ybool_t _yvar_has_option(const yvar_t * pyvar, yvar_option_t option)
 
 inline ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
 {
-    if (!lhs) {
+    if (!lhs || yvar_has_option(*lhs, YVAR_OPTION_READONLY)) {
         return yfalse;
     }
 
@@ -92,6 +92,25 @@ inline ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
 
     *lhs = *rhs;
     return ytrue;
+}
+
+inline ybool_t _yvar_clone(yvar_t * new_var, const yvar_t * old_var)
+{
+    if (!new_var || yvar_has_option(*new_var, YVAR_OPTION_READONLY)) {
+        return yfalse;
+    }
+
+    if (!old_var) {
+        yvar_t undefined = YVAR_UNDEFINED();
+        return yvar_assign(*new_var, undefined);
+    }
+    
+    if (yvar_has_option(*old_var, YVAR_OPTION_HOLD_RESOURCE)) {
+        return yvar_assign(*new_var, *old_var);
+    }
+
+    // TODO: recursively enum elements in old var and allocate new resouce to clone value
+    return yfalse; // TODO: change it
 }
 
 inline yvar_t * _ymap_get(const ymap_t * map, const yvar_t * key)

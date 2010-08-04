@@ -7,10 +7,11 @@ extern "C" {
 
 #define _YVAR_TEMP_VARIABLE(p, s) __yvar_temp##p##s
 #define _YVAR_INIT(t, tn, ...) {.type = (t), .version = YUKI_VAR_VERSION, .options = YVAR_OPTION_DEFAULT, .data.tn##_data = __VA_ARGS__}
+#define _YVAR_INIT_WITH_OPTION(t, option, tn, ...) {.type = (t), .version = YUKI_VAR_VERSION, .options = (option), .data.tn##_data = __VA_ARGS__}
 
 #define YUKI_VAR_VERSION 1
 
-#define YVAR_UNDEFINED() _YVAR_INIT(YVAR_TYPE_UNDEFINED, yundefined, 0)
+#define YVAR_UNDEFINED() _YVAR_INIT_WITH_OPTION(YVAR_TYPE_UNDEFINED, YVAR_OPTION_READONLY, yundefined, 0)
 #define YVAR_INT8(d) _YVAR_INIT(YVAR_TYPE_INT8, yint8, (d))
 #define YVAR_UINT8(d) _YVAR_INIT(YVAR_TYPE_UINT8, yuint8, (d))
 #define YVAR_INT16(d) _YVAR_INIT(YVAR_TYPE_INT16, yint16, (d))
@@ -19,6 +20,7 @@ extern "C" {
 #define YVAR_UINT32(d) _YVAR_INIT(YVAR_TYPE_UINT32, yuint32, (d))
 #define YVAR_CSTR(d) _YVAR_INIT(YVAR_TYPE_CSTR, ycstr, YCSTR((d)))
 #define YVAR_ARRAY(d) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = sizeof((d)) / sizeof(yvar_t), .yvars = (d)})
+#define YMAP_CREATE(k, v) {.keys = k, .values = v}
 
 #define yvar_is_array(yvar) _yvar_is_array(&(yvar))
 #define yvar_is_undefined(yvar) _yvar_is_undefined(&(yvar))
@@ -27,8 +29,8 @@ extern "C" {
 #define yvar_array_size(yvar) _yvar_array_size(&(yvar))
 #define yvar_has_option(yvar, opt) _yvar_has_option(&(yvar), (opt))
 #define yvar_assign(lhs, rhs) _yvar_assign(&(lhs), &(rhs))
+#define yvar_clone(new_var, old_var) _yvar_clone(&(new_var), &(old_var))
 
-#define YMAP_CREATE(k, v) {.keys = k, .values = v}
 #define ymap_get(map, k) _ymap_get(&(map), &(k))
 #define ymap_create(map, key, value) _ymap_create(&(map), &(key), &(value))
 #define ymap_create_sorted(map, key, value) _ymap_create_sorted(&(map), &(key), &(value))
@@ -93,6 +95,7 @@ inline ysize_t _yvar_array_size(const yvar_t * pyvar);
 
 inline ybool_t _yvar_has_option(const yvar_t * pyvar, yvar_option_t option);
 inline ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
+inline ybool_t _yvar_clone(yvar_t * new_var, const yvar_t * old_var);
 
 inline yvar_t * _ymap_get(const ymap_t * map, const yvar_t * key);
 inline ymap_t * _ymap_create(ymap_t * map, yvar_t * keys, yvar_t * values);
