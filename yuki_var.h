@@ -12,93 +12,293 @@ extern "C" {
 #define YUKI_VAR_VERSION 1
 
 #define YVAR_UNDEFINED() _YVAR_INIT_WITH_OPTION(YVAR_TYPE_UNDEFINED, YVAR_OPTION_READONLY, yundefined, 0)
+#define YVAR_EMPTY() {0}
+#define YVAR_BOOL(d) _YVAR_INIT(YVAR_TYPE_BOOL, ybool, (d))
 #define YVAR_INT8(d) _YVAR_INIT(YVAR_TYPE_INT8, yint8, (d))
 #define YVAR_UINT8(d) _YVAR_INIT(YVAR_TYPE_UINT8, yuint8, (d))
 #define YVAR_INT16(d) _YVAR_INIT(YVAR_TYPE_INT16, yint16, (d))
 #define YVAR_UINT16(d) _YVAR_INIT(YVAR_TYPE_UINT16, yuint16, (d))
 #define YVAR_INT32(d) _YVAR_INIT(YVAR_TYPE_INT32, yint32, (d))
 #define YVAR_UINT32(d) _YVAR_INIT(YVAR_TYPE_UINT32, yuint32, (d))
+#define YVAR_INT64(d) _YVAR_INIT(YVAR_TYPE_INT64, yint64, (d))
+#define YVAR_UINT64(d) _YVAR_INIT(YVAR_TYPE_UINT64, yuint64, (d))
 #define YVAR_CSTR(d) _YVAR_INIT(YVAR_TYPE_CSTR, ycstr, YCSTR((d)))
+#define YVAR_STR() _YVAR_INIT(YVAR_TYPE_STR, ystr, {.size = 0, .str = NULL})
 #define YVAR_ARRAY(d) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = sizeof((d)) / sizeof(yvar_t), .yvars = (d)})
+
 #define YMAP_CREATE(k, v) {.keys = k, .values = v}
 
-#define yvar_is_array(yvar) _yvar_is_array(&(yvar))
-#define yvar_is_undefined(yvar) _yvar_is_undefined(&(yvar))
+// following macros is for C++ compatible
+// NOTE: don't use them in pure C project. use upper case macro instead.
+// {{{
+#define _YVAR_INIT_FOR_CPP(yvar, t, tn, d) do { \
+        yvar_t * pointer = &(yvar); \
+        pointer->type = (t); \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.tn##_data = (d); \
+    } while (0)
+#define _YVAR_INIT_WITH_OPTION_FOR_CPP(yvar, t, option, tn, d) do { \
+        yvar_t * pointer = &(yvar); \
+        pointer->type = (t); \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = (option); \
+        pointer->data.tn##_data = (d); \
+    } while (0)
+
+#define yvar_undefined(yvar) _YVAR_INIT_WITH_OPTION_FOR_CPP(yvar, YVAR_TYPE_UNDEFINED, YVAR_OPTION_DEFAULT, yundefined, 0)
+#define yvar_bool(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_BOOL, ybool, (d))
+#define yvar_int8(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_INT8, yint8, (d))
+#define yvar_uint8(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_UINT8, yuint8, (d))
+#define yvar_int16(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_INT16, yint16, (d))
+#define yvar_uint16(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_UINT16, yuint16, (d))
+#define yvar_int32(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_INT32, yint32, (d))
+#define yvar_uint32(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_UINT32, yuint32, (d))
+#define yvar_int64(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_INT64, yint64, (d))
+#define yvar_uint64(yvar, d) _YVAR_INIT_FOR_CPP(yvar, YVAR_TYPE_UINT64, yuint64, (d))
+#define yvar_cstr(yvar, d) do { \
+        yvar_t * pointer = &(yvar); \
+        ycstr_t str = {sizeof((d)) - 1, (d)}; \
+        pointer->type = YVAR_TYPE_CSTR; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.ycstr_data = str; \
+    } while (0)
+#define yvar_str(yvar) do { \
+        yvar_t * pointer = &(yvar); \
+        ystr_t str = {0}; \
+        pointer->type = YVAR_TYPE_STR; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_READONLY; \
+        pointer->data.ystr_data = str; \
+    } while (0)
+#define yvar_array(yvar, d) do { \
+        yvar_t * pointer = &(yvar); \
+        yarray_t array = {sizeof((d)) / sizeof(yvar_t), (d)}; \
+        pointer->type = YVAR_TYPE_ARRAY; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.yarray_data = array; \
+    } while (0)
+#define yvar_list(yvar) do { \
+        yvar_t * pointer = &(yvar); \
+        ylist_t list = {0}; \
+        pointer->type = YVAR_TYPE_LIST; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.ylist_data = list; \
+    } while (0)
+// }}}
+
+#define _YVAR_IS_TYPE(yvar, t) ((yvar).type == (t))
+#define yvar_is_undefined(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UNDEFINED)
+#define yvar_is_bool(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_BOOL)
+#define yvar_is_int8(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT8)
+#define yvar_is_uint8(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT8)
+#define yvar_is_int16(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT16)
+#define yvar_is_uint16(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT16)
+#define yvar_is_int32(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT32)
+#define yvar_is_uint32(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT32)
+#define yvar_is_int64(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT64)
+#define yvar_is_uint64(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT64)
+#define yvar_is_cstr(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_CSTR)
+#define yvar_is_str(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_STR)
+#define yvar_is_array(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_ARRAY)
+#define yvar_is_list(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_LIST)
+
+#define yvar_get_bool(yvar, output) _yvar_get_bool(&(yvar), &(output))
+#define yvar_get_int8(yvar, output) _yvar_get_int8(&(yvar), &(output))
+#define yvar_get_uint8(yvar, output) _yvar_get_uint8(&(yvar), &(output))
+#define yvar_get_int16(yvar, output) _yvar_get_int16(&(yvar), &(output))
+#define yvar_get_uint16(yvar, output) _yvar_get_uint16(&(yvar), &(output))
+#define yvar_get_int32(yvar, output) _yvar_get_int32(&(yvar), &(output))
+#define yvar_get_uint32(yvar, output) _yvar_get_uint32(&(yvar), &(output))
+#define yvar_get_int64(yvar, output) _yvar_get_int64(&(yvar), &(output))
+#define yvar_get_uint64(yvar, output) _yvar_get_uint64(&(yvar), &(output))
+#define yvar_get_cstr(yvar, output, size) _yvar_get_cstr(&(yvar), (output), (size))
+#define yvar_get_str(yvar, output, size) _yvar_get_str(&(yvar), (output), (size))
+
+#define yvar_count(yvar) _yvar_count(&(yvar))
 #define yvar_is_equal(lhs, rhs) _yvar_is_equal(&(lhs), &(rhs))
-#define yvar_array_get(yvar, i) _yvar_array_get(&(yvar), (i))
+#define yvar_compare(lhs, rhs) _yvar_compare(&(lhs), &(rhs))
+
+#define yvar_array_get(yvar, index, output) _yvar_array_get(&(yvar), (index), &(output))
 #define yvar_array_size(yvar) _yvar_array_size(&(yvar))
-#define yvar_has_option(yvar, opt) _yvar_has_option(&(yvar), (opt))
 #define yvar_assign(lhs, rhs) _yvar_assign(&(lhs), &(rhs))
 #define yvar_clone(new_var, old_var) _yvar_clone(&(new_var), &(old_var))
 
-#define ymap_get(map, k) _ymap_get(&(map), &(k))
+#define yvar_has_option(yvar, opt) ((yvar).options & (opt))
+#define yvar_set_option(yvar, opt) ((yvar).options |= (opt))
+
+#define ymap_get(map, k, v) _ymap_get(&(map), &(k), &(v))
 #define ymap_create(map, key, value) _ymap_create(&(map), &(key), &(value))
 #define ymap_create_sorted(map, key, value) _ymap_create_sorted(&(map), &(key), &(value))
 
-// if C99 is enabled, declare variable in for loop
-#if (defined(YUKI_CONSTANTS_C99_ENABLED))
+// hey friend. i don't intend to use following code to frighten you.
+// but it's really too complex to implement a 'foreach' loop in C.
+// if you find any issue when using these 'foreach's, please keep calm and contact me.
 
-#   define YVAR_FOREACH(arr, value) \
-    if (!yvar_is_array(arr)) { \
+// if C99 is enabled, declare variable in for loop
+#if (defined(YUKI_CONFIG_C99_ENABLED))
+/**
+ * iterate array elements in a var.
+ * if var is not an array, do nothing.
+ * 
+ * sample code.
+ * @code
+ * yvar_t raw_arr = {YVAR_INT8(23), YVAR_CSTR("Hello"), YVAR_UINT32(222)};
+ * yvar_t arr = YVAR_ARR(raw_arr);
+ * 
+ * // note: don't declare 'value' yourself. i will do this for you.
+ * FOREACH_YVAR_ARRAY(arr, value) {
+ *     // type of 'value' is yvar_t*. you can use it freely.
+ * }
+ * @endcode
+ */
+# define FOREACH_YVAR_ARRAY(arr, value) \
+    const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(arr); \
+    if (!yvar_is_array(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
     } else \
-        for (yvar_t *value = arr.data.yarray_data.yvars, \
-            *end = arr.data.yarray_data.yvars + arr.data.yarray_data.size; \
+        for (yvar_t *value = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars, \
+            *end = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars + \
+                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.size; \
             value != end; value++)
 
-#   define YMAP_FOREACH(map, key, value) \
-    ysize_t _YVAR_TEMP_VARIABLE(index##key, __LINE__) = 0; \
-    if (!yvar_array_size(map.keys)) { \
+/**
+ * iterate list elements in a var.
+ * if var is not an list, do nothing.
+ * 
+ * sample code.
+ * @code
+ * yvar_t list = YVAR_LIST();
+ * yvar_t value1 = YVAR_INT8(23);
+ * yvar_t value2 = YVAR_CSTR("Hey");
+ * yvar_t value3 = YVAR_INT32(2222);
+ *
+ * yvar_list_push_back(value1);
+ * yvar_list_push_back(value2);
+ * yvar_list_push_back(value3);
+ * 
+ * // note: don't declare 'value' yourself. i will do this for you.
+ * FOREACH_YVAR_LIST(list, value) {
+ *     // type of 'value' is yvar_t*. you can use it freely.
+ * }
+ * @endcode
+ */
+# define FOREACH_YVAR_LIST(list, value) \
+    const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(list); \
+    ylist_node_t * _YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.head; \
+    ylist_node_t * _YVAR_TEMP_VARIABLE(tail##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.tail; \
+    if (!yvar_is_list(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
     } else \
-        for (yvar_t *key = map.keys.data.yarray_data.yvars, \
-            *value = yvar_array_get(map.values, 0), \
-            *end = map.keys.data.yarray_data.yvars + map.keys.data.yarray_data.size; \
+        for (yvar_t *value = &_YVAR_TEMP_VARIABLE(head##key, __LINE__)->yvar; \
+            _YVAR_TEMP_VARIABLE(head##key, __LINE__) != _YVAR_TEMP_VARIABLE(tail##key, __LINE__); \
+            value = &(_YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(head##key, __LINE__)->next)->yvar)
+
+/**
+ * iterate map elements.
+ * 
+ * sample code.
+ * @code
+ * yvar_t raw_keys = {YVAR_INT8(23), YVAR_CSTR("Hello"), YVAR_UINT32(222)};
+ * yvar_t keys = YVAR_ARR(raw_keys);
+ * yvar_t raw_values = {YVAR_INT8(54), YVAR_CSTR("World"), YVAR_UINT32(438)};
+ * yvar_t values = YVAR_ARR(raw_values);
+ * ymap_t map = YMAP_CREATE(keys, values);
+ * 
+ * // note: don't declare 'key' and 'value' yourself. i will do this for you.
+ * FOREACH_YMAP(map, key, value) {
+ *     // both type of 'key' and 'value' are yvar_t*. you can use it freely.
+ * }
+ * @endcode
+ */
+# define FOREACH_YMAP(map, key, value) \
+    const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(map); \
+    yvar_t * _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) = \
+        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.yvars; \
+    ysize_t _YVAR_TEMP_VARIABLE(index##key, __LINE__) = 0; \
+    if (!yvar_array_size(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys)) { \
+    } else \
+        for (yvar_t *key = _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__), \
+            *value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, 0), \
+            *end = _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) + \
+                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.size; \
             key != end; \
             key++, \
-            value = yvar_array_get(map.values, ++_YVAR_TEMP_VARIABLE(index##key, __LINE__)))
-
+            value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, \
+                ++_YVAR_TEMP_VARIABLE(index##key, __LINE__)))
 #else // C99 is not enabled
-
-#   define YVAR_FOREACH(arr, value) \
+# define FOREACH_YVAR_ARRAY(arr, value) \
     yvar_t * value; \
-    yvar_t * _YVAR_TEMP_VARIABLE(end##value, __LINE__); \
-    if (!yvar_is_array(arr)) { \
-    } else \
-        for (value = arr.data.yarray_data.yvars, \
-            _YVAR_TEMP_VARIABLE(end##value, __LINE__) = \
-                arr.data.yarray_data.yvars + arr.data.yarray_data.size; \
-            value != _YVAR_TEMP_VARIABLE(end##value, __LINE__); value++)
-
-#   define YMAP_FOREACH(map, key, value) \
-    yvar_t * key; \
-    yvar_t * value; \
+    const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(arr); \
     yvar_t * _YVAR_TEMP_VARIABLE(end##key, __LINE__); \
-    ysize_t _YVAR_TEMP_VARIABLE(index##key, __LINE__); \
-    if (!yvar_array_size(map.keys)) { \
+    if (!yvar_is_array(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
     } else \
-        for (_YVAR_TEMP_VARIABLE(index##key, __LINE__) = 0, \
-            key = map.keys.data.yarray_data.yvars, \
-            value = yvar_array_get(map.values, 0), \
+        for (value = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars, \
             _YVAR_TEMP_VARIABLE(end##key, __LINE__) = \
-                map.keys.data.yarray_data.yvars + map.keys.data.yarray_data.size; \
-            key != _YVAR_TEMP_VARIABLE(end##key, __LINE__); \
-            key++, \
-            value = yvar_array_get(map.values, ++_YVAR_TEMP_VARIABLE(index##key, __LINE__)))
+                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars + \
+                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.size; \
+            value != end; value++)
 
+# define FOREACH_YVAR_LIST(list, value) \
+    yvar_t * value; \
+    const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(list); \
+    ylist_node_t * _YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.head; \
+    ylist_node_t * _YVAR_TEMP_VARIABLE(tail##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.tail; \
+    if (!yvar_is_list(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
+    } else \
+        for (value = &_YVAR_TEMP_VARIABLE(head##key, __LINE__)->yvar; \
+            _YVAR_TEMP_VARIABLE(head##key, __LINE__) != _YVAR_TEMP_VARIABLE(tail##key, __LINE__); \
+            value = &(_YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(head##key, __LINE__)->next)->yvar)
+
+# define FOREACH_YMAP(map, key, value) \
+    yvar_t *key, *value; \
+    const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(map); \
+    yvar_t * _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) = \
+        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.yvars; \
+    ysize_t _YVAR_TEMP_VARIABLE(index##key, __LINE__) = 0; \
+    yvar_t * _YVAR_TEMP_VARIABLE(end##key, __LINE__); \
+    if (!yvar_array_size(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys)) { \
+    } else \
+        for (key = _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__), \
+            value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, 0), \
+            _YVAR_TEMP_VARIABLE(end##key, __LINE__) = \
+                _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) + \
+                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.size; \
+            key != end; \
+            key++, \
+            value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, \
+                ++_YVAR_TEMP_VARIABLE(index##key, __LINE__)))
 #endif
 
-inline ybool_t _yvar_is_array(const yvar_t * pyvar);
-inline ybool_t _yvar_is_undefined(const yvar_t * pyvar);
-inline ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs);
+#define _YVAR_GET_FUNCTION_DECLARE(t) ybool_t _yvar_get_##t(const yvar_t * yvar, y##t##_t * output)
+#define _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(t) ybool_t _yvar_get_##t(const yvar_t * yvar, char * output, ysize_t size)
 
-inline yvar_t * _yvar_array_get(const yvar_t * pyvar, size_t i);
-inline ysize_t _yvar_array_size(const yvar_t * pyvar);
+_YVAR_GET_FUNCTION_DECLARE(bool);
+_YVAR_GET_FUNCTION_DECLARE(int8);
+_YVAR_GET_FUNCTION_DECLARE(uint8);
+_YVAR_GET_FUNCTION_DECLARE(int16);
+_YVAR_GET_FUNCTION_DECLARE(uint16);
+_YVAR_GET_FUNCTION_DECLARE(int32);
+_YVAR_GET_FUNCTION_DECLARE(uint32);
+_YVAR_GET_FUNCTION_DECLARE(int64);
+_YVAR_GET_FUNCTION_DECLARE(uint64);
+_YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(cstr);
+_YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(str);
 
-inline ybool_t _yvar_has_option(const yvar_t * pyvar, yvar_option_t option);
-inline ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
-inline ybool_t _yvar_clone(yvar_t * new_var, const yvar_t * old_var);
+ysize_t _yvar_count(const yvar_t * yvar);
+ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs);
+yint8_t _yvar_compare(const yvar_t * plhs, const yvar_t * prhs);
 
-inline yvar_t * _ymap_get(const ymap_t * map, const yvar_t * key);
-inline ymap_t * _ymap_create(ymap_t * map, yvar_t * keys, yvar_t * values);
+ybool_t _yvar_array_get(const yvar_t * pyvar, size_t index, yvar_t * output);
+ysize_t _yvar_array_size(const yvar_t * pyvar);
+
+ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
+ybool_t _yvar_clone(yvar_t * new_var, const yvar_t * old_var);
+
+ybool_t _ymap_get(const ymap_t * map, const yvar_t * key, yvar_t * value);
+ybool_t _ymap_create(ymap_t * map, yvar_t * keys, yvar_t * values);
+ybool_t _ymap_create_sorted(ymap_t * map, yvar_t * keys, yvar_t * values);
 
 #ifdef __cplusplus
 }

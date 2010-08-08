@@ -7,7 +7,7 @@ extern "C" {
 
 #if (defined(__STDC_VERSION__))
 #   if (__STDC_VERSION__ == 199901L)
-#       define YUKI_CONSTANTS_C99_ENABLED
+#       define YUKI_CONFIG_C99_ENABLED
 #   endif
 #endif
 
