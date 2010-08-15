@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 #define _YUKI_LOG_FORMAT(prefix, file, line) _YUKI_LOG_FORMAT_REAL(prefix, file, line)
-#define _YUKI_LOG_FORMAT_REAL(prefix, file, line) "["prefix"]["file":"#line"] "
+#define _YUKI_LOG_FORMAT_REAL(prefix, file, line) "["prefix"] ["file":"#line"] "
 
 #define YUKI_LOG_CRITICAL(...) _yuki_log_write(YLOG_LEVEL_CRITICAL, _YUKI_LOG_FORMAT("CRITICAL", __FILE__, __LINE__) __VA_ARGS__)
 #define YUKI_LOG_FATAL(...)    _yuki_log_write(YLOG_LEVEL_FATAL,    _YUKI_LOG_FORMAT("FATAL", __FILE__, __LINE__) __VA_ARGS__)
@@ -22,10 +22,11 @@ typedef enum _ylog_level_t {
     YLOG_LEVEL_NOTICE = 8,
     YLOG_LEVEL_TRACE = 16,
     YLOG_LEVEL_DEBUG = 32,
+    YLOG_LEVEL_MAX,
 } ylog_level_t;
 
-ybool_t yuki_log_init();
-ybool_t _yuki_log_write(ylog_level_t level, const char * format, ...);
+void _yuki_log_write(ylog_level_t level, const char * format, ...);
+void yuki_log_flush();
 
 #ifdef __cplusplus
 }

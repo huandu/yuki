@@ -10,30 +10,34 @@ LIB = lib$(PROJECT_NAME).a
 OBJS  = $(patsubst %.c,%.o,$(wildcard *.c))
 LIBS = -lpthread -lz
 INCS =  
-CFLAGS = $(INCS) -std=c99 -Wall -Werror -g -O1
+DFLAGS =
+CFLAGS = $(INCS) -std=c99 -Wall -Werror -g
 RM = rm -f
 
-.PHONY: all lib test clean
+.PHONY: all lib test clean debug
 
-all: lib
+all : lib
 
-test: lib
+debug : DFLAGS += -DDEBUG
+debug : lib
+
+test : lib
 	cd test/ && make -f Makefile
 	cd ..
 
-lib: $(OBJS) $(LIB)
+lib : $(OBJS) $(LIB)
 
-$(LIB): 
+$(LIB) : 
 	$(AR) rc $@ $(OBJS)
 	ranlib $@
 	mkdir -p output/lib output/include
 	cp $@ output/lib
 	cp *.h output/include
 
-%.o: %.c
-	$(CC) -c $< -o $@ $(CFLAGS)
+%.o : %.c
+	$(CC) -c $< -o $@ $(CFLAGS) $(DFLAGS)
 
-clean:
+clean :
 	${RM} $(OBJS) $(LIB)
 	${RM}r output/
 	cd test/ && make -f Makefile clean

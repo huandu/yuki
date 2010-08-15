@@ -5,11 +5,12 @@
 extern "C" {
 #endif
 
-#define _YVAR_TEMP_VARIABLE(p, s) __yvar_temp##p##s
+#define YUKI_VAR_VERSION 0x1
+
+#define _YVAR_TEMP_VARIABLE_REAL(p, s) __yvar_temp##p##s
+#define _YVAR_TEMP_VARIABLE(p, s) _YVAR_TEMP_VARIABLE_REAL(p, s)
 #define _YVAR_INIT(t, tn, ...) {.type = (t), .version = YUKI_VAR_VERSION, .options = YVAR_OPTION_DEFAULT, .data.tn##_data = __VA_ARGS__}
 #define _YVAR_INIT_WITH_OPTION(t, option, tn, ...) {.type = (t), .version = YUKI_VAR_VERSION, .options = (option), .data.tn##_data = __VA_ARGS__}
-
-#define YUKI_VAR_VERSION 1
 
 #define YVAR_UNDEFINED() _YVAR_INIT_WITH_OPTION(YVAR_TYPE_UNDEFINED, YVAR_OPTION_READONLY, yundefined, 0)
 #define YVAR_EMPTY() {0}
@@ -23,10 +24,10 @@ extern "C" {
 #define YVAR_INT64(d) _YVAR_INIT(YVAR_TYPE_INT64, yint64, (d))
 #define YVAR_UINT64(d) _YVAR_INIT(YVAR_TYPE_UINT64, yuint64, (d))
 #define YVAR_CSTR(d) _YVAR_INIT(YVAR_TYPE_CSTR, ycstr, YCSTR((d)))
-#define YVAR_STR() _YVAR_INIT(YVAR_TYPE_STR, ystr, {.size = 0, .str = NULL})
+#define YVAR_STR() _YVAR_INIT(YVAR_TYPE_STR, ystr, {0})
 #define YVAR_ARRAY(d) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = sizeof((d)) / sizeof(yvar_t), .yvars = (d)})
-
-#define YMAP_CREATE(k, v) {.keys = k, .values = v}
+#define YVAR_LIST() _YVAR_INIT(YVAR_TYPE_LIST, ylist, {0})
+#define YVAR_MAP(k, v) _YVAR_INIT(YVAR_TYPE_MAP, ymap, {&(k), &(v)})
 
 // following macros is for C++ compatible
 // NOTE: don't use them in pure C project. use upper case macro instead.
@@ -88,23 +89,32 @@ extern "C" {
         pointer->options = YVAR_OPTION_DEFAULT; \
         pointer->data.ylist_data = list; \
     } while (0)
+#define yvar_map(yvar, k, v) do { \
+        yvar_t * pointer = &(yvar); \
+        ymap_t map = {&(k), &(v)}; \
+        pointer->type = YVAR_TYPE_MAP; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.ymap_data = map; \
+    } while (0)
 // }}}
 
 #define _YVAR_IS_TYPE(yvar, t) ((yvar).type == (t))
 #define yvar_is_undefined(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UNDEFINED)
-#define yvar_is_bool(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_BOOL)
-#define yvar_is_int8(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT8)
-#define yvar_is_uint8(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT8)
-#define yvar_is_int16(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT16)
-#define yvar_is_uint16(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT16)
-#define yvar_is_int32(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT32)
-#define yvar_is_uint32(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT32)
-#define yvar_is_int64(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT64)
-#define yvar_is_uint64(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT64)
-#define yvar_is_cstr(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_CSTR)
-#define yvar_is_str(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_STR)
-#define yvar_is_array(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_ARRAY)
-#define yvar_is_list(yvar) _YVAR_IS_TYPE((yvar), YVAR_TYPE_LIST)
+#define yvar_is_bool(yvar)      _YVAR_IS_TYPE((yvar), YVAR_TYPE_BOOL)
+#define yvar_is_int8(yvar)      _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT8)
+#define yvar_is_uint8(yvar)     _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT8)
+#define yvar_is_int16(yvar)     _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT16)
+#define yvar_is_uint16(yvar)    _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT16)
+#define yvar_is_int32(yvar)     _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT32)
+#define yvar_is_uint32(yvar)    _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT32)
+#define yvar_is_int64(yvar)     _YVAR_IS_TYPE((yvar), YVAR_TYPE_INT64)
+#define yvar_is_uint64(yvar)    _YVAR_IS_TYPE((yvar), YVAR_TYPE_UINT64)
+#define yvar_is_cstr(yvar)      _YVAR_IS_TYPE((yvar), YVAR_TYPE_CSTR)
+#define yvar_is_str(yvar)       _YVAR_IS_TYPE((yvar), YVAR_TYPE_STR)
+#define yvar_is_array(yvar)     _YVAR_IS_TYPE((yvar), YVAR_TYPE_ARRAY)
+#define yvar_is_list(yvar)      _YVAR_IS_TYPE((yvar), YVAR_TYPE_LIST)
+#define yvar_is_map(yvar)       _YVAR_IS_TYPE((yvar), YVAR_TYPE_MAP)
 
 #define yvar_get_bool(yvar, output) _yvar_get_bool(&(yvar), &(output))
 #define yvar_get_int8(yvar, output) _yvar_get_int8(&(yvar), &(output))
@@ -122,19 +132,31 @@ extern "C" {
 #define yvar_is_equal(lhs, rhs) _yvar_is_equal(&(lhs), &(rhs))
 #define yvar_compare(lhs, rhs) _yvar_compare(&(lhs), &(rhs))
 
+#define yvar_str_strlen(yvar) _yvar_cstr_strlen(&(yvar))
+#define yvar_cstr_strlen(yvar) _yvar_cstr_strlen(&(yvar))
+
 #define yvar_array_get(yvar, index, output) _yvar_array_get(&(yvar), (index), &(output))
 #define yvar_array_size(yvar) _yvar_array_size(&(yvar))
+
+#define yvar_list_push_back(yvar, node) _yvar_list_push_back(&(yvar), &(node))
+
+#define yvar_map_get(map, k, v) _yvar_map_get(&(map), &(k), &(v))
+
 #define yvar_assign(lhs, rhs) _yvar_assign(&(lhs), &(rhs))
 #define yvar_clone(new_var, old_var) _yvar_clone(&(new_var), &(old_var))
+#define yvar_memzero(yvar) _yvar_memzero(&(yvar))
+#define yvar_unset(yvar) yvar_memzero(yvar)
 
 #define yvar_has_option(yvar, opt) ((yvar).options & (opt))
 #define yvar_set_option(yvar, opt) ((yvar).options |= (opt))
+#define yvar_reset_option(yvar, opt) ((yvar).options &= ~(opt))
 
-#define ymap_get(map, k, v) _ymap_get(&(map), &(k), &(v))
-#define ymap_create(map, key, value) _ymap_create(&(map), &(key), &(value))
-#define ymap_create_sorted(map, key, value) _ymap_create_sorted(&(map), &(key), &(value))
+/** get read/write reference of internal string buffer of cstr var. */
+#define yvar_cstr_buffer(yvar) ((yvar).data.ycstr_data.str)
+/** get read/write reference of internal string buffer of cstr var. */
+#define yvar_str_buffer(yvar) ((yvar).data.ystr_data.str)
 
-// hey friend. i don't intend to use following code to frighten you.
+// hey friend, i don't intend to use following code to frighten you.
 // but it's really too complex to implement a 'foreach' loop in C.
 // if you find any issue when using these 'foreach's, please keep calm and contact me.
 
@@ -158,11 +180,13 @@ extern "C" {
 # define FOREACH_YVAR_ARRAY(arr, value) \
     const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(arr); \
     if (!yvar_is_array(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
+        YUKI_LOG_DEBUG("cannot do foreach array on a non array var"); \
     } else \
         for (yvar_t *value = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars, \
-            *end = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars + \
+            *_YVAR_TEMP_VARIABLE(end##key, __LINE__) = \
+                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars + \
                 _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.size; \
-            value != end; value++)
+            value != _YVAR_TEMP_VARIABLE(end##key, __LINE__); value++)
 
 /**
  * iterate list elements in a var.
@@ -188,11 +212,11 @@ extern "C" {
 # define FOREACH_YVAR_LIST(list, value) \
     const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(list); \
     ylist_node_t * _YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.head; \
-    ylist_node_t * _YVAR_TEMP_VARIABLE(tail##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.tail; \
     if (!yvar_is_list(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
+        YUKI_LOG_DEBUG("cannot do foreach list on a non list var"); \
     } else \
         for (yvar_t *value = &_YVAR_TEMP_VARIABLE(head##key, __LINE__)->yvar; \
-            _YVAR_TEMP_VARIABLE(head##key, __LINE__) != _YVAR_TEMP_VARIABLE(tail##key, __LINE__); \
+            _YVAR_TEMP_VARIABLE(head##key, __LINE__); \
             value = &(_YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(head##key, __LINE__)->next)->yvar)
 
 /**
@@ -204,7 +228,7 @@ extern "C" {
  * yvar_t keys = YVAR_ARR(raw_keys);
  * yvar_t raw_values = {YVAR_INT8(54), YVAR_CSTR("World"), YVAR_UINT32(438)};
  * yvar_t values = YVAR_ARR(raw_values);
- * ymap_t map = YMAP_CREATE(keys, values);
+ * yvar_t map = YVAR_MAP(keys, values);
  * 
  * // note: don't declare 'key' and 'value' yourself. i will do this for you.
  * FOREACH_YMAP(map, key, value) {
@@ -212,63 +236,65 @@ extern "C" {
  * }
  * @endcode
  */
-# define FOREACH_YMAP(map, key, value) \
+# define FOREACH_YVAR_MAP(map, key, value) \
     const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(map); \
-    yvar_t * _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) = \
-        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.yvars; \
-    ysize_t _YVAR_TEMP_VARIABLE(index##key, __LINE__) = 0; \
-    if (!yvar_array_size(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys)) { \
+    yvar_t * _YVAR_TEMP_VARIABLE(keys##key, __LINE__) = \
+        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ymap_data.keys; \
+    yvar_t * _YVAR_TEMP_VARIABLE(values##key, __LINE__) = \
+        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ymap_data.values; \
+    if (!yvar_is_map(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)) \
+        || !yvar_is_array(*_YVAR_TEMP_VARIABLE(keys##key, __LINE__)) \
+        || !yvar_is_array(*_YVAR_TEMP_VARIABLE(values##key, __LINE__))) { \
+        YUKI_LOG_DEBUG("cannot do foreach map on a var which is not a map var or an invalid map"); \
     } else \
-        for (yvar_t *key = _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__), \
-            *value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, 0), \
-            *end = _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) + \
-                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.size; \
-            key != end; \
-            key++, \
-            value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, \
-                ++_YVAR_TEMP_VARIABLE(index##key, __LINE__)))
+        for (yvar_t *key = _YVAR_TEMP_VARIABLE(keys##key, __LINE__)->data.yarray_data.yvars, \
+            *value = _YVAR_TEMP_VARIABLE(values##key, __LINE__)->data.yarray_data.yvars, \
+            *_YVAR_TEMP_VARIABLE(end##key, __LINE__) = \
+                key + _YVAR_TEMP_VARIABLE(keys##key, __LINE__)->data.yarray_data.size; \
+            key != _YVAR_TEMP_VARIABLE(end##key, __LINE__); key++, value++)
 #else // C99 is not enabled
 # define FOREACH_YVAR_ARRAY(arr, value) \
     yvar_t * value; \
     const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(arr); \
     yvar_t * _YVAR_TEMP_VARIABLE(end##key, __LINE__); \
     if (!yvar_is_array(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
+        YUKI_LOG_DEBUG("cannot do foreach array on a non array var"); \
     } else \
         for (value = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars, \
             _YVAR_TEMP_VARIABLE(end##key, __LINE__) = \
                 _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.yvars + \
                 _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.yarray_data.size; \
-            value != end; value++)
+            value != _YVAR_TEMP_VARIABLE(end##key, __LINE__); value++)
 
 # define FOREACH_YVAR_LIST(list, value) \
     yvar_t * value; \
     const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(list); \
     ylist_node_t * _YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.head; \
-    ylist_node_t * _YVAR_TEMP_VARIABLE(tail##key, __LINE__) = _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ylist_data.tail; \
     if (!yvar_is_list(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__))) { \
+        YUKI_LOG_DEBUG("cannot do foreach list on a non list var"); \
     } else \
         for (value = &_YVAR_TEMP_VARIABLE(head##key, __LINE__)->yvar; \
-            _YVAR_TEMP_VARIABLE(head##key, __LINE__) != _YVAR_TEMP_VARIABLE(tail##key, __LINE__); \
+            _YVAR_TEMP_VARIABLE(head##key, __LINE__); \
             value = &(_YVAR_TEMP_VARIABLE(head##key, __LINE__) = _YVAR_TEMP_VARIABLE(head##key, __LINE__)->next)->yvar)
 
-# define FOREACH_YMAP(map, key, value) \
+# define FOREACH_YVAR_MAP(map, key, value) \
     yvar_t *key, *value; \
     const yvar_t * _YVAR_TEMP_VARIABLE(yvar##key, __LINE__) = &(map); \
-    yvar_t * _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) = \
-        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.yvars; \
-    ysize_t _YVAR_TEMP_VARIABLE(index##key, __LINE__) = 0; \
+    yvar_t * _YVAR_TEMP_VARIABLE(keys##key, __LINE__) = \
+        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ymap_data.keys; \
+    yvar_t * _YVAR_TEMP_VARIABLE(values##key, __LINE__) = \
+        _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->data.ymap_data.values; \
     yvar_t * _YVAR_TEMP_VARIABLE(end##key, __LINE__); \
-    if (!yvar_array_size(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys)) { \
+    if (!yvar_is_map(*_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)) \
+        || !yvar_is_array(*_YVAR_TEMP_VARIABLE(keys##key, __LINE__)) \
+        || !yvar_is_array(*_YVAR_TEMP_VARIABLE(values##key, __LINE__))) { \
+        YUKI_LOG_DEBUG("cannot do foreach map on a var which is not a map var or an invalid map"); \
     } else \
-        for (key = _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__), \
-            value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, 0), \
+        for (key = _YVAR_TEMP_VARIABLE(keys##key, __LINE__)->data.yarray_data.yvars, \
+            value = _YVAR_TEMP_VARIABLE(values##key, __LINE__)->data.yarray_data.yvars, \
             _YVAR_TEMP_VARIABLE(end##key, __LINE__) = \
-                _YVAR_TEMP_VARIABLE(array_yvars##key, __LINE__) + \
-                _YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->keys.data.yarray_data.size; \
-            key != end; \
-            key++, \
-            value = yvar_array_get(_YVAR_TEMP_VARIABLE(yvar##key, __LINE__)->values, \
-                ++_YVAR_TEMP_VARIABLE(index##key, __LINE__)))
+                key + _YVAR_TEMP_VARIABLE(keys##key, __LINE__)->data.yarray_data.size; \
+            key != _YVAR_TEMP_VARIABLE(end##key, __LINE__); key++, value++)
 #endif
 
 #define _YVAR_GET_FUNCTION_DECLARE(t) ybool_t _yvar_get_##t(const yvar_t * yvar, y##t##_t * output)
@@ -290,15 +316,18 @@ ysize_t _yvar_count(const yvar_t * yvar);
 ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs);
 yint8_t _yvar_compare(const yvar_t * plhs, const yvar_t * prhs);
 
+ysize_t _yvar_cstr_strlen(const yvar_t * yvar);
+
 ybool_t _yvar_array_get(const yvar_t * pyvar, size_t index, yvar_t * output);
 ysize_t _yvar_array_size(const yvar_t * pyvar);
 
-ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
-ybool_t _yvar_clone(yvar_t * new_var, const yvar_t * old_var);
+ybool_t _yvar_list_push_back(yvar_t * yvar, yvar_t * node);
 
-ybool_t _ymap_get(const ymap_t * map, const yvar_t * key, yvar_t * value);
-ybool_t _ymap_create(ymap_t * map, yvar_t * keys, yvar_t * values);
-ybool_t _ymap_create_sorted(ymap_t * map, yvar_t * keys, yvar_t * values);
+ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value);
+
+ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
+ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var);
+ybool_t _yvar_memzero(yvar_t * new_var);
 
 #ifdef __cplusplus
 }

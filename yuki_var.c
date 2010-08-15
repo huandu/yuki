@@ -1,7 +1,11 @@
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "yuki.h"
+
+// forward declaration as _yvar_clone_internal_element() uses it.
+static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, const yvar_t * var, ybool_t need_clone);
 
 static ybool_t _ybool_to_str(ybool_t ybool, char * output, ysize_t size)
 {
@@ -77,6 +81,198 @@ static ybool_t _ycstr_to_str(const ycstr_t * ycstr, char * output, ysize_t size)
     return ytrue;
 }
 
+/**
+ * count size of memory of a var recursively.
+ * especially, if yvar is NULL, return 0.
+ */
+static ysize_t _yvar_mem_size(const yvar_t * yvar)
+{
+    ysize_t size = ybuffer_round_up(sizeof(yvar_t));
+
+    switch (yvar->type) {
+        case YVAR_TYPE_ARRAY:
+        {
+            FOREACH_YVAR_ARRAY(*yvar, value) {
+                size += _yvar_mem_size(value);
+            }
+
+            ysize_t cnt = yvar_count(*yvar);
+            size += ybuffer_round_up(cnt * sizeof(yvar_t));
+            size -= ybuffer_round_up(sizeof(yvar_t)) * cnt;
+
+            break;
+        }
+        case YVAR_TYPE_LIST:
+        {
+            FOREACH_YVAR_LIST(*yvar, value) {
+                size += _yvar_mem_size(value) + ybuffer_round_up(sizeof(ylist_node_t) - sizeof(yvar_t));
+            }
+
+            break;
+        }
+        case YVAR_TYPE_MAP:
+            size += _yvar_mem_size(yvar->data.ymap_data.keys);
+            size += _yvar_mem_size(yvar->data.ymap_data.values);
+            break;
+        case YVAR_TYPE_STR:
+        case YVAR_TYPE_CSTR:
+            size += ybuffer_round_up((yvar_cstr_strlen(*yvar)) + 1);
+            break;
+    }
+
+    return size;
+}
+
+/**
+ * clone internal elements of a var in a given buffer.
+ */
+static ybool_t _yvar_clone_internal_element(ybuffer_t * buffer, yvar_t * new_var, const yvar_t * old_var)
+{
+    yvar_memzero(*new_var);
+
+    if (!yvar_assign(*new_var, *old_var)) {
+        YUKI_LOG_FATAL("cannot assign new value");
+        return yfalse;
+    }
+
+    // recursively enum elements in old var and allocate new resouce to clone value
+    switch (old_var->type) {
+        case YVAR_TYPE_ARRAY:
+        {
+            yvar_t * yvars = (yvar_t*)ybuffer_alloc(buffer, old_var->data.yarray_data.size * sizeof(yvar_t));
+
+            if (!yvars) {
+                YUKI_LOG_WARNING("out of memory");
+                return yfalse;
+            }
+
+            ysize_t cnt = 0;
+
+            FOREACH_YVAR_ARRAY(*old_var, value) {
+                if (!_yvar_clone_internal_element(buffer, yvars + cnt, value)) {
+                    YUKI_LOG_WARNING("fail to clone internal buffer");
+                    return yfalse;
+                }
+
+                cnt++;
+            }
+
+            new_var->data.yarray_data.yvars = yvars;
+
+            break;
+        }
+        case YVAR_TYPE_LIST:
+        {
+            yvar_t list = YVAR_LIST();
+
+            FOREACH_YVAR_LIST(*old_var, value) {
+                if (!_yvar_list_push_back_internal(buffer, &list, value, ytrue)) {
+                    YUKI_LOG_WARNING("cannot add new node");
+                    return yfalse;
+                }
+            }
+
+            new_var->data.ylist_data.head = list.data.ylist_data.head;
+            new_var->data.ylist_data.tail = list.data.ylist_data.tail;
+
+            break;
+        }
+        case YVAR_TYPE_MAP:
+        {
+            yvar_t * keys = ybuffer_smart_alloc(buffer, yvar_t);
+
+            if (!keys) {
+                YUKI_LOG_WARNING("out of memory");
+                return yfalse;
+            }
+
+            if (!_yvar_clone_internal_element(buffer, keys, old_var->data.ymap_data.keys)) {
+                YUKI_LOG_WARNING("fail to clone internal buffer");
+                return yfalse;
+            }
+
+            yvar_t * values = ybuffer_smart_alloc(buffer, yvar_t);
+
+            if (!values) {
+                YUKI_LOG_WARNING("out of memory");
+                return yfalse;
+            }
+
+            if (!_yvar_clone_internal_element(buffer, values, old_var->data.ymap_data.values)) {
+                YUKI_LOG_WARNING("fail to clone internal buffer");
+                return yfalse;
+            }
+
+            new_var->data.ymap_data.keys = keys;
+            new_var->data.ymap_data.values = values;
+            
+            break;
+        }
+        case YVAR_TYPE_CSTR:
+        case YVAR_TYPE_STR:
+        {
+            // the len includes '\0'
+            ysize_t len = yvar_cstr_strlen(*old_var) + 1;
+            char * dest = (char *)ybuffer_alloc(buffer, len);
+
+            if (!dest) {
+                YUKI_LOG_WARNING("out of memory");
+                return yfalse;
+            }
+
+            strncpy(dest, yvar_cstr_buffer(*old_var), len);
+            yvar_str_buffer(*new_var) = dest;
+            break;
+        }
+    }
+
+    return ytrue;
+}
+
+static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, const yvar_t * var, ybool_t need_clone)
+{
+    ylist_node_t * node = ybuffer_smart_alloc(buffer, ylist_node_t);
+
+    if (!node) {
+        YUKI_LOG_WARNING("out of memory");
+        return yfalse;
+    }
+
+    if (need_clone) {
+        if (!_yvar_clone_internal_element(buffer, &node->yvar, var)) {
+            YUKI_LOG_WARNING("cannot clone value to node");
+            return yfalse;
+        }
+    } else {
+        yvar_memzero(node->yvar);
+
+        if (!yvar_assign(node->yvar, *var)) {
+            YUKI_LOG_WARNING("cannot assign new value to node");
+            return yfalse;
+        }
+    }
+
+    // if list is empty, change both head and tail.
+    if (!list->data.ylist_data.head) {
+        YUKI_ASSERT(!list->data.ylist_data.tail);
+
+        list->data.ylist_data.head = node;
+        list->data.ylist_data.tail = node;
+        node->next = NULL;
+        node->prev = NULL;
+    } else {
+        YUKI_ASSERT(list->data.ylist_data.tail);
+
+        ylist_node_t * old_tail = list->data.ylist_data.tail;
+        old_tail->next = node;
+        node->prev = old_tail;
+        node->next = NULL;
+        list->data.ylist_data.tail = node;
+    }
+
+    return ytrue;
+}
+
 ybool_t _yvar_get_bool(const yvar_t * yvar, ybool_t * output)
 {
     if (!yvar || !output) {
@@ -119,7 +315,12 @@ ybool_t _yvar_get_bool(const yvar_t * yvar, ybool_t * output)
             *output = yvar->data.yarray_data.size? ytrue: yfalse;
             break;
         case YVAR_TYPE_LIST:
-            *output = yvar->data.ylist_data.head? yfalse: ytrue;
+            *output = yvar->data.ylist_data.head? ytrue: yfalse;
+            YUKI_ASSERT(*output || !yvar->data.ylist_data.tail);
+            break;
+        case YVAR_TYPE_MAP:
+            *output = yvar->data.ymap_data.keys? ytrue: yfalse;
+            YUKI_ASSERT(*output || !yvar->data.ymap_data.values);
             break;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
@@ -214,6 +415,9 @@ ybool_t _yvar_get_int8(const yvar_t * yvar, yint8_t * output)
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to int8");
             return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to int8");
+            return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
@@ -307,6 +511,9 @@ ybool_t _yvar_get_uint8(const yvar_t * yvar, yuint8_t * output)
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to uint8");
             return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to uint8");
+            return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
@@ -389,6 +596,9 @@ ybool_t _yvar_get_int16(const yvar_t * yvar, yint16_t * output)
             return yfalse;
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to int16");
+            return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to int16");
             return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
@@ -478,6 +688,9 @@ ybool_t _yvar_get_uint16(const yvar_t * yvar, yuint16_t * output)
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to uint16");
             return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to uint16");
+            return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
@@ -550,6 +763,9 @@ ybool_t _yvar_get_int32(const yvar_t * yvar, yint32_t * output)
             return yfalse;
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to int32");
+            return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to int32");
             return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
@@ -634,6 +850,9 @@ ybool_t _yvar_get_uint32(const yvar_t * yvar, yuint32_t * output)
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to uint32");
             return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to uint32");
+            return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
@@ -696,6 +915,9 @@ ybool_t _yvar_get_int64(const yvar_t * yvar, yint64_t * output)
             return yfalse;
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to int64");
+            return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to int64");
             return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
@@ -775,6 +997,9 @@ ybool_t _yvar_get_uint64(const yvar_t * yvar, yuint64_t * output)
         case YVAR_TYPE_LIST:
             YUKI_LOG_DEBUG("list cannot be converted to uint64");
             return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to uint64");
+            return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
@@ -821,10 +1046,13 @@ ybool_t _yvar_get_cstr(const yvar_t * yvar, char * output, ysize_t size)
         case YVAR_TYPE_STR:
             return _ycstr_to_str(&yvar->data.ycstr_data, output, size);
         case YVAR_TYPE_ARRAY:
-            YUKI_LOG_DEBUG("array cannot be converted to uint64");
+            YUKI_LOG_DEBUG("array cannot be converted to str or cstr");
             return yfalse;
         case YVAR_TYPE_LIST:
-            YUKI_LOG_DEBUG("list cannot be converted to uint64");
+            YUKI_LOG_DEBUG("list cannot be converted to str or cstr");
+            return yfalse;
+        case YVAR_TYPE_MAP:
+            YUKI_LOG_DEBUG("map cannot be converted to str or cstr");
             return yfalse;
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
@@ -871,6 +1099,8 @@ ysize_t _yvar_count(const yvar_t * yvar)
 
             return cnt;
         }
+        case YVAR_TYPE_MAP:
+            return _yvar_count(yvar->data.ymap_data.keys);
         default:
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return 0;
@@ -884,7 +1114,7 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
     }
 
     if (!plhs || !prhs) {
-        YUKI_LOG_FATAL("invalid param");
+        YUKI_LOG_DEBUG("NULL pointer in param");
         return yfalse;
     }
 
@@ -939,18 +1169,13 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
             }
 
             ysize_t cnt;
-            yvar_t lhs_var = YVAR_EMPTY();
-            yvar_t rhs_var = YVAR_EMPTY();
-            for (cnt = 0;
-                cnt < lhs_cnt 
-                    && yvar_array_get(*plhs, cnt, lhs_var)
-                    && yvar_array_get(*prhs, cnt, rhs_var)
-                    && yvar_is_equal(lhs_var, rhs_var);
-                cnt++) {
-                // nothing
+            for (cnt = 0; cnt < lhs_cnt; cnt++) {
+                if (!yvar_is_equal(plhs->data.yarray_data.yvars[cnt], prhs->data.yarray_data.yvars[cnt])) {
+                    return yfalse;
+                }
             }
 
-            return cnt == lhs_cnt;
+            return ytrue;
         }
         case YVAR_TYPE_LIST:
         {
@@ -970,10 +1195,26 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
 
             return lhs_head == lhs_tail && rhs_head == rhs_tail;
         }
+        case YVAR_TYPE_MAP:
+            if (!yvar_is_equal(*plhs->data.ymap_data.keys, *prhs->data.ymap_data.keys)) {
+                return yfalse;
+            }
+
+            return yvar_is_equal(*plhs->data.ymap_data.values, *prhs->data.ymap_data.values);
         default:
             YUKI_LOG_FATAL("impossible type value %d", plhs->type);
             return yfalse;
     }
+}
+
+ysize_t _yvar_cstr_strlen(const yvar_t * yvar)
+{
+    if (!yvar_is_str(*yvar) && !yvar_is_cstr(*yvar)) {
+        YUKI_LOG_FATAL("var is not str or cstr");
+        return 0;
+    }
+
+    return yvar->data.ycstr_data.size;
 }
 
 ybool_t _yvar_array_get(const yvar_t * array, size_t index, yvar_t * output)
@@ -1009,6 +1250,61 @@ ysize_t _yvar_array_size(const yvar_t * pyvar)
     return pyvar->data.yarray_data.size;
 }
 
+ybool_t _yvar_list_push_back(yvar_t * yvar, yvar_t * node)
+{
+    if (!yvar || !node || !yvar_is_list(*yvar)) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    if (yvar_has_option(*yvar, YVAR_OPTION_READONLY)) {
+        YUKI_LOG_DEBUG("list is readonly");
+        return yfalse;
+    }
+
+    ybuffer_t * buffer = ybuffer_create(sizeof(ylist_node_t));
+
+    if (!buffer) {
+        YUKI_LOG_WARNING("cannot create buffer");
+        return yfalse;
+    }
+
+    ybool_t ret = _yvar_list_push_back_internal(buffer, yvar, node, yfalse);
+    YUKI_ASSERT(!ybuffer_available_size(buffer));
+    return ret;
+}
+
+ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value)
+{
+    if (!map || !key || !value || !yvar_is_map(*map)) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    static yvar_t undefined = YVAR_UNDEFINED();
+    yvar_t * keys = map->data.ymap_data.keys;
+    yvar_t * values = map->data.ymap_data.values;
+
+    if (!yvar_is_array(*keys) || !yvar_is_array(*values)) {
+        YUKI_LOG_FATAL("map keys or values is not an array. why?");
+        return yfalse;
+    }
+
+    // TODO: for sorted map, use binary search
+    ysize_t i = 0;
+    FOREACH_YVAR_ARRAY(*keys, v) {
+        if (yvar_is_equal(*v, *key)) {
+            return yvar_array_get(*values, i, *value);
+        }
+
+        i++;
+    }
+
+    YUKI_LOG_DEBUG("key is not found");
+    yvar_assign(*value, undefined);
+    return yfalse;
+}
+
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
 {
     if (!lhs || !rhs) {
@@ -1025,63 +1321,47 @@ ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
     return ytrue;
 }
 
-ybool_t _yvar_clone(yvar_t * new_var, const yvar_t * old_var)
+ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var)
 {
     if (!new_var || !old_var) {
         YUKI_LOG_FATAL("invalid param");
         return yfalse;
     }
 
-    if (yvar_has_option(*new_var, YVAR_OPTION_READONLY)) {
-        YUKI_LOG_FATAL("new var must be modifiable");
+    ysize_t size = _yvar_mem_size(old_var);
+    ybuffer_t * buffer = ybuffer_create(size);
+
+    if (!buffer) {
+        YUKI_LOG_WARNING("out of memory");
         return yfalse;
     }
-    
-    if (yvar_has_option(*old_var, YVAR_OPTION_HOLD_RESOURCE)) {
-        return yvar_assign(*new_var, *old_var);
+
+    yvar_t * yvar = ybuffer_smart_alloc(buffer, yvar_t);
+
+    if (!yvar) {
+        YUKI_LOG_WARNING("out of memory");
+        return yfalse;
     }
 
-    // TODO: recursively enum elements in old var and allocate new resouce to clone value
-    return yfalse; // TODO: change it
+    if (!_yvar_clone_internal_element(buffer, yvar, old_var)) {
+        YUKI_LOG_WARNING("fail to clone internal element");
+        return yfalse;
+    }
+
+    // buffer MUST be empty.
+    YUKI_ASSERT(!ybuffer_available_size(buffer));
+    YUKI_LOG_DEBUG("var is cloned");
+    *new_var = yvar;
+    return ytrue;
 }
 
-ybool_t _ymap_get(const ymap_t * map, const yvar_t * key, yvar_t * value)
+ybool_t _yvar_memzero(yvar_t * yvar)
 {
-    if (!map || !key || !value) {
+    if (!yvar) {
         YUKI_LOG_FATAL("invalid param");
         return yfalse;
     }
 
-    static yvar_t undefined = YVAR_UNDEFINED();
-
-    if (!yvar_is_array(map->values) || !yvar_is_array(map->values)) {
-        YUKI_LOG_FATAL("map keys or values is not an array. why?");
-        return yfalse;
-    }
-
-    // TODO: for sorted map, use binary search
-    ysize_t i = 0;
-    FOREACH_YVAR_ARRAY(map->keys, v) {
-        if (yvar_is_equal(*v, *key)) {
-            yvar_t array_var = YVAR_EMPTY();
-            yvar_array_get(map->values, i, array_var);
-            return yvar_assign(*value, array_var);
-        }
-
-        i++;
-    }
-
-    YUKI_LOG_DEBUG("key is not found");
-    yvar_assign(*value, undefined);
-    return yfalse;
-}
-
-ybool_t _ymap_create(ymap_t * map, yvar_t * keys, yvar_t * values)
-{
-    if (!yvar_assign(map->keys, *keys)) {
-        YUKI_LOG_DEBUG("fail to assign keys");
-        return yfalse;
-    }
-
-    return yvar_assign(map->values, *values);
+    memset(yvar, 0, sizeof(yvar_t));
+    return ytrue;
 }

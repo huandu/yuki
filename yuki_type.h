@@ -11,16 +11,10 @@
 # define PRIu64 ((sizeof(void *) == 4)? "llu": "lu")
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stddef.h>
 
 #ifdef __cplusplus
-# define ytrue true
-# define yfalse false
-#else
-# define ytrue 1
-# define yfalse 0
+extern "C" {
 #endif
 
 #define YUKI_MAX_INT8_VALUE   127
@@ -47,6 +41,11 @@ extern "C" {
 #define YUKI_MAX_UINT64_VALUE 18446744073709551615ULL
 #define YUKI_MIN_UINT64_VALUE 0
 
+typedef enum _YBOOL_VALUE {
+    yfalse = 0,
+    ytrue,
+} YBOOL_VALUE;
+
 typedef enum _YVAR_TYPE {
     YVAR_TYPE_UNDEFINED = 0,
     YVAR_TYPE_BOOL,
@@ -62,6 +61,7 @@ typedef enum _YVAR_TYPE {
     YVAR_TYPE_STR,
     YVAR_TYPE_ARRAY,
     YVAR_TYPE_LIST,
+    YVAR_TYPE_MAP,
 } YVAR_TYPE;
 
 /**
@@ -110,6 +110,16 @@ typedef struct _ylist_t {
     struct _ylist_node_t * tail;
 } ylist_t;
 
+/**
+ * a very simple & stupid 'map'.
+ * @note
+ * it's not based on tree. it's array.
+ */
+typedef struct _ymap_t {
+    struct _yvar_t * keys;
+    struct _yvar_t * values;
+} ymap_t;
+
 typedef struct _yvar_t {
     yuint8_t type;
     yuint8_t version;
@@ -130,6 +140,7 @@ typedef struct _yvar_t {
         ystr_t ystr_data;
         yarray_t yarray_data;
         ylist_t ylist_data;
+        ymap_t ymap_data;
     } data;
 } yvar_t;
 
@@ -139,12 +150,6 @@ typedef struct _ylist_node_t {
     yvar_t yvar;
 } ylist_node_t;
 
-// a very simple & stupic 'map'. note: it's not based on tree. it's array.
-typedef struct _ymap_t {
-    yvar_t keys;
-    yvar_t values;
-} ymap_t;
-
 typedef struct _ytable_t {
     yvar_t table_name;
     yvar_t condition;
@@ -152,6 +157,13 @@ typedef struct _ytable_t {
     yvar_t hash_key;
     yvar_t sql;
 } ytable_t;
+
+typedef struct _ybuffer_t {
+    ysize_t size;
+    ysize_t offset;
+    struct _ybuffer_t * next;
+    char buffer[];
+} ybuffer_t;
 
 #ifdef __cplusplus
 }

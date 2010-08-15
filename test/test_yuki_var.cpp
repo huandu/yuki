@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include "yuki.h"
 
+#define YUKI_INI_FILE "./test/yuki.ini"
+
 TEST(YukiVarTest, UseVar) {
-    yuki_log_init();
+    yuki_init(YUKI_INI_FILE);
 
     #define _GENERATE_USE_VAR_CASE(t, v) do { \
         yvar_t my_var = YVAR_EMPTY(); \
@@ -35,10 +37,13 @@ TEST(YukiVarTest, UseVar) {
     }
 
     #undef _GENERATE_USE_VAR_CASE
+
+    yuki_clean_up();
+    yuki_shutdown();
 }
 
 TEST(YukiVarTest, ForeachVarArray) {
-    yuki_log_init();
+    yuki_init(YUKI_INI_FILE);
 
     #define _GENERATE_FOREACH_VAR_CASE(t, v) \
         yvar_t var_##t = YVAR_EMPTY(); \
@@ -96,7 +101,140 @@ TEST(YukiVarTest, ForeachVarArray) {
     ASSERT_TRUE(yvar_is_equal(output, undefined));
 
     #undef _GENERATE_FOREACH_VAR_CASE
+
+    yuki_clean_up();
+    yuki_shutdown();
 }
+
+TEST(YukiVarTest, VarClone) {
+    yvar_t * before_init_var = NULL;
+    yvar_t before_init_int8_var = YVAR_EMPTY();
+    yvar_int8(before_init_int8_var, 127);
+    ASSERT_FALSE(yvar_clone(before_init_var, before_init_int8_var));
+
+    yuki_init(YUKI_INI_FILE);
+
+    #define _GENERATE_VAR_CLONE_CASE(t, v) do { \
+        yvar_t yvar = YVAR_EMPTY(); \
+        yvar_t * new_var = NULL; \
+        yvar_##t(yvar, (v)); \
+        ASSERT_TRUE(yvar_clone(new_var, yvar)); \
+        ASSERT_TRUE(yvar_is_equal(*new_var, yvar)); \
+    } while (0)
+
+    _GENERATE_VAR_CLONE_CASE(bool, ytrue);
+    _GENERATE_VAR_CLONE_CASE(int8, 12);
+    _GENERATE_VAR_CLONE_CASE(uint8, 200);
+    _GENERATE_VAR_CLONE_CASE(int16, 23456);
+    _GENERATE_VAR_CLONE_CASE(uint16, 64727);
+    _GENERATE_VAR_CLONE_CASE(int32, 78901234);
+    _GENERATE_VAR_CLONE_CASE(uint32, 0x93123452UL);
+    _GENERATE_VAR_CLONE_CASE(int64, 0x7342930284728340LL);
+    _GENERATE_VAR_CLONE_CASE(uint64, 0xE03AE8439DCC2194ULL);
+
+    {
+        yvar_t * new_var = NULL;
+        yvar_t yvar = YVAR_EMPTY();
+        char exp_cstr[] = "Hello world";
+        yvar_cstr(yvar, exp_cstr);
+        ASSERT_TRUE(yvar_clone(new_var, yvar));
+        ASSERT_FALSE(new_var == NULL);
+        ASSERT_TRUE(yvar_is_equal(*new_var, yvar));
+    }
+
+    {
+        yvar_t * new_var = NULL;
+        yvar_t yvar1 = YVAR_EMPTY();
+        yvar_t yvar2 = YVAR_EMPTY();
+        yvar_t yvar3 = YVAR_EMPTY();
+        yvar_t yvar4 = YVAR_EMPTY();
+        yvar_t yvar5 = YVAR_EMPTY();
+        yvar_t yvar6 = YVAR_EMPTY();
+        yvar_t yvar7 = YVAR_EMPTY();
+        yvar_t yvar8 = YVAR_EMPTY();
+        char exp_cstr1[] = "Hello world";
+        char exp_cstr2[] = "Hello world 2nd";
+        char exp_cstr3[] = "Hello world 3rd";
+        char exp_cstr4[] = "Hello world 4th";
+        char exp_cstr5[] = "Hello world 5th";
+        char exp_cstr6[] = "Hello world 6th";
+        char exp_cstr7[] = "Hello world 7th";
+        char exp_cstr8[] = "Hello world 8th";
+        yvar_cstr(yvar1, exp_cstr1);
+        yvar_cstr(yvar2, exp_cstr2);
+        yvar_cstr(yvar3, exp_cstr3);
+        yvar_cstr(yvar4, exp_cstr4);
+        yvar_cstr(yvar5, exp_cstr5);
+        yvar_cstr(yvar6, exp_cstr6);
+        yvar_cstr(yvar7, exp_cstr7);
+        yvar_cstr(yvar8, exp_cstr8);
+
+        yvar_t raw_arr1[] = {
+            yvar1, yvar2, yvar3, yvar4
+        };
+        yvar_t raw_arr2[] = {
+            yvar5, yvar6, yvar7, yvar8
+        };
+
+        yvar_t arr1 = YVAR_EMPTY();
+        yvar_array(arr1, raw_arr1);
+        ASSERT_TRUE(yvar_clone(new_var, arr1));
+        ASSERT_TRUE(yvar_is_equal(*new_var, arr1));
+        ASSERT_EQ(yvar_count(*new_var), 4u);
+
+        ysize_t i = 0;
+
+        FOREACH_YVAR_ARRAY(arr1, value1) {
+            ASSERT_TRUE(yvar_is_equal(*value1, raw_arr1[i]));
+            i++;
+        }
+
+        yvar_t arr2 = YVAR_EMPTY();
+        yvar_array(arr2, raw_arr2);
+        yvar_t map = YVAR_EMPTY();
+        yvar_map(map, arr2, arr1);
+        ASSERT_TRUE(yvar_clone(new_var, map));
+        ASSERT_TRUE(yvar_is_equal(*new_var, map));
+        ASSERT_EQ(yvar_count(*new_var), 4u);
+
+        i = 0;
+
+        FOREACH_YVAR_MAP(map, key2, value2) {
+            ASSERT_TRUE(yvar_is_equal(*key2, raw_arr2[i]));
+            ASSERT_TRUE(yvar_is_equal(*value2, raw_arr1[i]));
+            i++;
+        }
+
+        yvar_t list = YVAR_EMPTY();
+        yvar_list(list);
+        yvar_t raw_arr3[] = {
+            yvar1, yvar2, yvar3, yvar4, arr2, yvar6, yvar7, map
+        };
+        ysize_t cnt = sizeof(raw_arr3) / sizeof(raw_arr3[0]);
+
+        for (i = 0; i < cnt; i++) {
+            ASSERT_TRUE(yvar_list_push_back(list, raw_arr3[i]));
+        }
+
+        ASSERT_EQ(yvar_count(list), cnt);
+        ASSERT_TRUE(yvar_clone(new_var, list));
+        ASSERT_TRUE(yvar_is_equal(*new_var, list));
+        ASSERT_EQ(yvar_count(*new_var), cnt);
+
+        i = 0;
+
+        FOREACH_YVAR_LIST(list, value3) {
+            ASSERT_TRUE(yvar_is_equal(*value3, raw_arr3[i]));
+            i++;
+        }
+    }
+
+    #undef _GENERATE_VAR_CLONE_CASE
+
+    yuki_clean_up();
+    yuki_shutdown();
+}
+
 
 #if 0
     printf("var data is: %d\n", yvar.data.yint8_data);

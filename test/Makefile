@@ -18,24 +18,23 @@ INCS =  -I$(GTEST_INCLUDE_PATH) -I$(YUKI_INCLUDE_PATH)
 BIN  = $(PROJECT_NAME)
 
 DFLAGS =
-CFLAGS = $(INCS) $(DFLAGS) -g -O1 -Wall -Werror
+CFLAGS = $(INCS) $(DFLAGS) -g -Wall -Werror
 LDFLAGS = $(LIB_DIRS) $(LIBS)
 RM = rm -f
 
 .PHONY: all bin clean debug
 
-all: bin
+all : bin
 
-debug: DFLAGS += -DDEBUG
-debug: bin
+debug : DFLAGS += -DDEBUG
 
-clean:
+clean :
 	${RM} $(OBJS) $(BIN) $(LINKOBJ)
 
-bin: $(OBJS) $(BIN)
+bin : $(OBJS) $(BIN)
 
-$(BIN): $(LINKOBJ)
+$(BIN) : $(LINKOBJ)
 	$(CC) $< $(OBJS) -o $@ $(LDFLAGS)
 
-%.o: %.cpp
+%.o : %.cpp
 	$(CC) -c $< -o $@ $(CFLAGS)
