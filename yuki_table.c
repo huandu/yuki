@@ -1,8 +1,12 @@
 #include "yuki.h"
 
+// TODO: change this test code
+static ytable_t g_test_table = {0};
+
 ytable_t * ytable_instance(const char * table_name)
 {
-    return NULL;
+    // TODO: change test code
+    return &g_test_table;
 }
 
 ybool_t _ytable_select(ytable_t * ytable, const yvar_t * fields)

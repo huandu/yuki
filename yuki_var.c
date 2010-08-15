@@ -229,6 +229,32 @@ static ybool_t _yvar_clone_internal_element(ybuffer_t * buffer, yvar_t * new_var
     return ytrue;
 }
 
+ybool_t _yvar_clone_internal(ybuffer_t * buffer, yvar_t ** new_var, const yvar_t * old_var)
+{
+    if (!buffer) {
+        YUKI_LOG_WARNING("out of memory");
+        return yfalse;
+    }
+
+    yvar_t * yvar = ybuffer_smart_alloc(buffer, yvar_t);
+
+    if (!yvar) {
+        YUKI_LOG_WARNING("out of memory");
+        return yfalse;
+    }
+
+    if (!_yvar_clone_internal_element(buffer, yvar, old_var)) {
+        YUKI_LOG_WARNING("fail to clone internal element");
+        return yfalse;
+    }
+
+    // buffer MUST be empty.
+    YUKI_ASSERT(!ybuffer_available_size(buffer));
+    YUKI_LOG_DEBUG("var is cloned");
+    *new_var = yvar;
+    return ytrue;
+}
+
 static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, const yvar_t * var, ybool_t need_clone)
 {
     ylist_node_t * node = ybuffer_smart_alloc(buffer, ylist_node_t);
@@ -1331,28 +1357,25 @@ ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var)
     ysize_t size = _yvar_mem_size(old_var);
     ybuffer_t * buffer = ybuffer_create(size);
 
-    if (!buffer) {
-        YUKI_LOG_WARNING("out of memory");
+    return _yvar_clone_internal(buffer, new_var, old_var);
+}
+
+ybool_t _yvar_pin(yvar_t ** new_var, const yvar_t * old_var)
+{
+    if (!new_var || !old_var) {
+        YUKI_LOG_FATAL("invalid param");
         return yfalse;
     }
 
-    yvar_t * yvar = ybuffer_smart_alloc(buffer, yvar_t);
+    ysize_t size = _yvar_mem_size(old_var);
+    ybuffer_t * buffer = ybuffer_create_global(size);
 
-    if (!yvar) {
-        YUKI_LOG_WARNING("out of memory");
-        return yfalse;
-    }
+    return _yvar_clone_internal(buffer, new_var, old_var);
+}
 
-    if (!_yvar_clone_internal_element(buffer, yvar, old_var)) {
-        YUKI_LOG_WARNING("fail to clone internal element");
-        return yfalse;
-    }
-
-    // buffer MUST be empty.
-    YUKI_ASSERT(!ybuffer_available_size(buffer));
-    YUKI_LOG_DEBUG("var is cloned");
-    *new_var = yvar;
-    return ytrue;
+ybool_t _yvar_unpin(yvar_t * yvar)
+{
+    return ybuffer_destroy_global_pointer(yvar);
 }
 
 ybool_t _yvar_memzero(yvar_t * yvar)

@@ -151,12 +151,18 @@ typedef struct _ylist_node_t {
 } ylist_node_t;
 
 typedef struct _ytable_t {
-    yvar_t table_name;
-    yvar_t condition;
-    yvar_t params;
-    yvar_t hash_key;
-    yvar_t sql;
+    yvar_t * condition;
+    yvar_t * params;
+    yvar_t * hash_key;
+    yvar_t * sql;
+    ysize_t table_index;
 } ytable_t;
+
+typedef struct _ytable_config_t {
+    char * table_name;
+    char * hash_method;
+    yvar_t * params;
+} ytable_config_t;
 
 typedef struct _ybuffer_t {
     ysize_t size;
@@ -164,6 +170,14 @@ typedef struct _ybuffer_t {
     struct _ybuffer_t * next;
     char buffer[];
 } ybuffer_t;
+
+/**
+ * cookie for global buffer.
+ */
+typedef struct _ybuffer_cookie_t {
+    ybuffer_t * prev;
+    yuint64_t padding;
+} ybuffer_cookie_t;
 
 #ifdef __cplusplus
 }
