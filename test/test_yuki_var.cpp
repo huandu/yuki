@@ -235,121 +235,188 @@ TEST(YukiVarTest, VarClone) {
     yuki_shutdown();
 }
 
+TEST(YukiVarTest, VarPinAndUnpin) {
+    yvar_t * before_init_var = NULL;
+    yvar_t before_init_int8_var = YVAR_EMPTY();
+    yvar_int8(before_init_int8_var, 127);
+    ASSERT_FALSE(yvar_pin(before_init_var, before_init_int8_var));
 
-#if 0
-    printf("var data is: %d\n", yvar.data.yint8_data);
-    printf("pvar data is: %d\n", pyvar[0].data.yint16_data);
-    
-    ycstr_t cstr = YCSTR("Hello world!");
-    printf("cstr data is: %s, size is %lu\n", cstr.str, cstr.size);
-    
-    yvar_t cstr_var = YVAR_CSTR("Hey you!");
-    printf("cstr_var data is: %s, size is %lu\n", cstr_var.data.ycstr_data.str, cstr_var.data.ycstr_data.size);
-    
-    yvar_t yarr[] = {YVAR_INT8(23), YVAR_INT16(4444), YVAR_CSTR("Who?")};
-    yvar_t yarr_key = YVAR_ARRAY(yarr);
-    
-    yvar_t yarr2[] = {YVAR_INT8(14), YVAR_INT16(2345), YVAR_CSTR("Me!")};
-    yvar_t yarr_value = YVAR_ARRAY(yarr2);
+    yuki_init(YUKI_INI_FILE);
 
-    yvar_t yassign;
-    yvar_assign(yassign, cstr_var);
-    printf("assigned data is: %s, size is %lu\n", yassign.data.ycstr_data.str, yassign.data.ycstr_data.size);
+    #define _GENERATE_VAR_PIN_CASE(t, v) do { \
+        yvar_t yvar = YVAR_EMPTY(); \
+        yvar_t * new_var = NULL; \
+        yvar_##t(yvar, (v)); \
+        ASSERT_TRUE(yvar_pin(new_var, yvar)); \
+        ASSERT_TRUE(yvar_is_equal(*new_var, yvar)); \
+        \
+        yuki_clean_up(); \
+        ASSERT_TRUE(yvar_unpin(new_var)); \
+        ASSERT_FALSE(yvar_unpin(new_var)); \
+        ASSERT_TRUE(yvar_pin(new_var, yvar)); \
+        ASSERT_TRUE(yvar_is_equal(*new_var, yvar)); \
+        \
+        yuki_shutdown(); \
+        ASSERT_FALSE(yvar_unpin(new_var)); \
+        yuki_init(YUKI_INI_FILE); \
+    } while (0)
 
-    yvar_t * pnull = NULL;
-    yvar_assign(*pnull, cstr_var); // nothing happens
+    _GENERATE_VAR_PIN_CASE(bool, ytrue);
+    _GENERATE_VAR_PIN_CASE(int8, 12);
+    _GENERATE_VAR_PIN_CASE(uint8, 200);
+    _GENERATE_VAR_PIN_CASE(int16, 23456);
+    _GENERATE_VAR_PIN_CASE(uint16, 64727);
+    _GENERATE_VAR_PIN_CASE(int32, 78901234);
+    _GENERATE_VAR_PIN_CASE(uint32, 0x93123452UL);
+    _GENERATE_VAR_PIN_CASE(int64, 0x7342930284728340LL);
+    _GENERATE_VAR_PIN_CASE(uint64, 0xE03AE8439DCC2194ULL);
 
-    char *is_or_not[] = {"is not", "is"};
-    printf("var data %s arr\n", is_or_not[yvar_is_array(yvar)]);
-    printf("cstr data %s arr\n", is_or_not[yvar_is_array(cstr_var)]);
-    printf("arr data %s arr\n", is_or_not[yvar_is_array(yarr_key)]);
-    printf("arr data %s arr\n", is_or_not[yvar_is_array(yarr_value)]);
-
-    // if not using C99, need to use this extra {}
     {
-        YVAR_FOREACH(yarr_key, value) {
-            printf("item: ");
+        yvar_t * new_var = NULL;
+        yvar_t yvar = YVAR_EMPTY();
+        char exp_cstr[] = "Hello world";
+        yvar_cstr(yvar, exp_cstr);
+        ASSERT_TRUE(yvar_pin(new_var, yvar));
+        ASSERT_FALSE(new_var == NULL);
+        ASSERT_TRUE(yvar_is_equal(*new_var, yvar));
 
-            switch (value->type) {
-                case YVAR_TYPE_INT8:
-                    printf("data is %d\n", value->data.yint8_data);
-                    break;
+        yuki_clean_up();
+        ASSERT_TRUE(yvar_unpin(new_var));
+        ASSERT_FALSE(yvar_unpin(new_var));
 
-                case YVAR_TYPE_INT16:
-                    printf("data is %d\n", value->data.yint16_data);
-                    break;
-                case YVAR_TYPE_CSTR:
-                    printf("data is %s\n", value->data.ycstr_data.str);
-                    break;
-                default:
-                    printf("unknown data type\n");
-                    break;
-            }
-        }
+        ASSERT_TRUE(yvar_pin(new_var, yvar));
+        ASSERT_FALSE(new_var == NULL);
+        ASSERT_TRUE(yvar_is_equal(*new_var, yvar));
+        yuki_shutdown();
+        ASSERT_FALSE(yvar_unpin(new_var));
+        yuki_init(YUKI_INI_FILE);
     }
 
     {
-        // do foreach on a non-arr var will simply do nothing
-        YVAR_FOREACH(yvar, value) {
-            // won't be here
-            printf("item: ");
+        yvar_t * new_var = NULL;
+        yvar_t yvar1 = YVAR_EMPTY();
+        yvar_t yvar2 = YVAR_EMPTY();
+        yvar_t yvar3 = YVAR_EMPTY();
+        yvar_t yvar4 = YVAR_EMPTY();
+        yvar_t yvar5 = YVAR_EMPTY();
+        yvar_t yvar6 = YVAR_EMPTY();
+        yvar_t yvar7 = YVAR_EMPTY();
+        yvar_t yvar8 = YVAR_EMPTY();
+        char exp_cstr1[] = "Hello world";
+        char exp_cstr2[] = "Hello world 2nd";
+        char exp_cstr3[] = "Hello world 3rd";
+        char exp_cstr4[] = "Hello world 4th";
+        char exp_cstr5[] = "Hello world 5th";
+        char exp_cstr6[] = "Hello world 6th";
+        char exp_cstr7[] = "Hello world 7th";
+        char exp_cstr8[] = "Hello world 8th";
+        yvar_cstr(yvar1, exp_cstr1);
+        yvar_cstr(yvar2, exp_cstr2);
+        yvar_cstr(yvar3, exp_cstr3);
+        yvar_cstr(yvar4, exp_cstr4);
+        yvar_cstr(yvar5, exp_cstr5);
+        yvar_cstr(yvar6, exp_cstr6);
+        yvar_cstr(yvar7, exp_cstr7);
+        yvar_cstr(yvar8, exp_cstr8);
+
+        yvar_t raw_arr1[] = {
+            yvar1, yvar2, yvar3, yvar4
+        };
+        yvar_t raw_arr2[] = {
+            yvar5, yvar6, yvar7, yvar8
+        };
+
+        yvar_t arr1 = YVAR_EMPTY();
+        yvar_array(arr1, raw_arr1);
+        ASSERT_TRUE(yvar_pin(new_var, arr1));
+        ASSERT_TRUE(yvar_is_equal(*new_var, arr1));
+        ASSERT_EQ(yvar_count(*new_var), 4u);
+
+        ysize_t i = 0;
+
+        FOREACH_YVAR_ARRAY(arr1, value1) {
+            ASSERT_TRUE(yvar_is_equal(*value1, raw_arr1[i]));
+            i++;
         }
-    }
-    
-    ymap_t map = YMAP_CREATE(yarr_key, yarr_value);
-    
-    yvar_t key1 = YVAR_INT16(4444);
-    yvar_t * value1 = ymap_get(map, key1);
-    printf("got key %d: %d\n", key1.data.yint16_data, value1->data.yint16_data);
-    
-    yvar_t key2 = YVAR_CSTR("Oh?");
-    yvar_t * value2 = ymap_get(map, key2);
-    printf("key %s %s undefined\n", key2.data.ycstr_data.str, is_or_not[yvar_is_undefined(*value2)]);
 
-    yvar_t key3 = YVAR_CSTR("Who?");
-    yvar_t * value3 = ymap_get(map, key3);
-    printf("key %s %s undefined\n", key3.data.ycstr_data.str, is_or_not[yvar_is_undefined(*value3)]);
-    printf("got key %s: %s\n", key3.data.ycstr_data.str, value3->data.ycstr_data.str);
+        yuki_clean_up();
+        ASSERT_TRUE(yvar_unpin(new_var));
+        ASSERT_FALSE(yvar_unpin(new_var));
+        
+        ASSERT_TRUE(yvar_pin(new_var, arr1));
+        ASSERT_TRUE(yvar_is_equal(*new_var, arr1));
+        yuki_shutdown();
+        ASSERT_FALSE(yvar_unpin(new_var));
+        yuki_init(YUKI_INI_FILE);
 
-    {
-        YMAP_FOREACH(map, key, value) {
-            printf("key: ");
+        yvar_t arr2 = YVAR_EMPTY();
+        yvar_array(arr2, raw_arr2);
+        yvar_t map = YVAR_EMPTY();
+        yvar_map(map, arr2, arr1);
+        ASSERT_TRUE(yvar_pin(new_var, map));
+        ASSERT_TRUE(yvar_is_equal(*new_var, map));
+        ASSERT_EQ(yvar_count(*new_var), 4u);
 
-            switch (key->type) {
-                case YVAR_TYPE_INT8:
-                    printf("%d", key->data.yint8_data);
-                    break;
+        i = 0;
 
-                case YVAR_TYPE_INT16:
-                    printf("%d", key->data.yint16_data);
-                    break;
-                case YVAR_TYPE_CSTR:
-                    printf("%s", key->data.ycstr_data.str);
-                    break;
-                default:
-                    printf("unknown data type\n");
-                    break;
-            }
-            
-            printf(" value: ");
-
-            switch (value->type) {
-                case YVAR_TYPE_INT8:
-                    printf("%d", value->data.yint8_data);
-                    break;
-
-                case YVAR_TYPE_INT16:
-                    printf("%d", value->data.yint16_data);
-                    break;
-                case YVAR_TYPE_CSTR:
-                    printf("%s", value->data.ycstr_data.str);
-                    break;
-                default:
-                    printf("unknown data type\n");
-                    break;
-            }
-            
-            printf("\n");
+        FOREACH_YVAR_MAP(map, key2, value2) {
+            ASSERT_TRUE(yvar_is_equal(*key2, raw_arr2[i]));
+            ASSERT_TRUE(yvar_is_equal(*value2, raw_arr1[i]));
+            i++;
         }
+
+        yuki_clean_up();
+        ASSERT_TRUE(yvar_unpin(new_var));
+        ASSERT_FALSE(yvar_unpin(new_var));
+        
+        ASSERT_TRUE(yvar_pin(new_var, map));
+        ASSERT_TRUE(yvar_is_equal(*new_var, map));
+        yuki_shutdown();
+        ASSERT_FALSE(yvar_unpin(new_var));
+        yuki_init(YUKI_INI_FILE);
+
+        yvar_t * new_list = NULL;
+        yvar_t list = YVAR_EMPTY();
+        yvar_list(list);
+        yvar_t raw_arr3[] = {
+            yvar1, yvar2, yvar3, yvar4, arr2, yvar6, yvar7, map
+        };
+        ysize_t cnt = sizeof(raw_arr3) / sizeof(raw_arr3[0]);
+
+        for (i = 0; i < cnt; i++) {
+            ASSERT_TRUE(yvar_list_push_back(list, raw_arr3[i]));
+        }
+
+        ASSERT_EQ(yvar_count(list), cnt);
+        ASSERT_TRUE(yvar_pin(new_var, list));
+        ASSERT_TRUE(yvar_pin(new_list, list));
+        ASSERT_TRUE(yvar_is_equal(*new_var, list));
+        ASSERT_TRUE(yvar_is_equal(*new_list, list));
+        ASSERT_EQ(yvar_count(*new_var), cnt);
+        ASSERT_EQ(yvar_count(*new_list), cnt);
+
+        i = 0;
+
+        FOREACH_YVAR_LIST(list, value3) {
+            ASSERT_TRUE(yvar_is_equal(*value3, raw_arr3[i]));
+            i++;
+        }
+
+        yuki_clean_up();
+        ASSERT_TRUE(yvar_unpin(new_var));
+        ASSERT_FALSE(yvar_unpin(new_var));
+
+        ASSERT_TRUE(yvar_pin(new_var, *new_list));
+        ASSERT_TRUE(yvar_is_equal(*new_var, *new_list));
+        ASSERT_TRUE(yvar_unpin(new_list));
+        yuki_shutdown();
+        ASSERT_FALSE(yvar_unpin(new_var));
+        yuki_init(YUKI_INI_FILE);
     }
-#endif
+
+    #undef _GENERATE_VAR_CLONE_CASE
+
+    yuki_clean_up();
+    yuki_shutdown();
+}
+

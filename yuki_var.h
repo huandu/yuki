@@ -144,6 +144,8 @@ extern "C" {
 
 #define yvar_assign(lhs, rhs) _yvar_assign(&(lhs), &(rhs))
 #define yvar_clone(new_var, old_var) _yvar_clone(&(new_var), &(old_var))
+#define yvar_pin(new_var, old_var) _yvar_pin(&(new_var), &(old_var))
+#define yvar_unpin(yvar) _yvar_unpin((yvar))
 #define yvar_memzero(yvar) _yvar_memzero(&(yvar))
 #define yvar_unset(yvar) yvar_memzero(yvar)
 
@@ -327,6 +329,8 @@ ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value);
 
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
 ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var);
+ybool_t _yvar_pin(yvar_t ** new_var, const yvar_t * old_var);
+ybool_t _yvar_unpin(yvar_t * yvar);
 ybool_t _yvar_memzero(yvar_t * new_var);
 
 #ifdef __cplusplus

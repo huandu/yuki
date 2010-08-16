@@ -46,7 +46,7 @@ void _yuki_log_write(ylog_level_t level, const char * pattern, ...)
     if (level <= g_ylog_max_level) {
         char buf[64] = "\0";
         time_t t = time(NULL);
-        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%I:%S ", localtime(&t));
+        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S ", localtime(&t));
         fprintf(log_file, buf);
 
         va_list args;

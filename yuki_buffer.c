@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <assert.h>
 
 #include "yuki.h"
 
@@ -23,6 +24,32 @@ static void _ybuffer_thread_clean_up(void * head)
         free(buffer);
         buffer = next;
     }
+}
+
+static void _ybuffer_global_clean_up()
+{
+    if (!g_ybuffer_global_chain) {
+        YUKI_LOG_DEBUG("global buffer chain is empty");
+        return;
+    }
+
+    ybuffer_t * buffer = g_ybuffer_global_chain;
+    ybuffer_t * next = NULL;
+    ybuffer_cookie_t * cookie = NULL;
+
+    while (buffer) {
+        next = buffer->next;
+
+        // destroy padding
+        YUKI_ASSERT(buffer->size >= ybuffer_round_up(sizeof(ybuffer_cookie_t)));
+        cookie = (ybuffer_cookie_t*)buffer->buffer;
+        cookie->padding = 0;
+
+        free(buffer);
+        buffer = next;
+    }
+
+    g_ybuffer_global_chain = NULL;
 }
 
 static inline ybool_t ybuffer_inited()
@@ -68,7 +95,7 @@ void _ybuffer_clean_up()
 
 void _ybuffer_shutdown()
 {
-    _ybuffer_thread_clean_up(g_ybuffer_global_chain);
+    _ybuffer_global_clean_up();
     g_ybuffer_inited = yfalse;
 }
 
@@ -134,7 +161,11 @@ ybuffer_t * ybuffer_create_global(ysize_t size)
     // add memory to global free list
     if (g_ybuffer_global_chain) {
         ptr->next = g_ybuffer_global_chain->next;
-        ((ybuffer_cookie_t*)ptr->next->buffer)->prev = ptr;
+
+        if (ptr->next) {
+            ((ybuffer_cookie_t*)ptr->next->buffer)->prev = ptr;
+        }
+
         g_ybuffer_global_chain->next = ptr;
         cookie->prev = g_ybuffer_global_chain;
     } else {
@@ -190,12 +221,13 @@ ybool_t ybuffer_destroy_global(ybuffer_t * buffer)
     ybuffer_cookie_t * cookie = (ybuffer_cookie_t*)buffer->buffer;
 
     if (YBUFFER_COOKIE_PADDING != cookie->padding) {
-        YUKI_LOG_WARNING("try to destroy a non-global buffer");
+        YUKI_LOG_WARNING("try to destroy an invalid global buffer");
         return yfalse;
     }
 
     ybuffer_t * prev = cookie->prev;
     ybuffer_t * next = buffer->next;
+    cookie->padding = 0;
 
     if (next) {
         ((ybuffer_cookie_t*)next->buffer)->prev = prev;
@@ -203,11 +235,8 @@ ybool_t ybuffer_destroy_global(ybuffer_t * buffer)
 
     if (prev) {
         prev->next = next;
-    }
-
-    // if chain is empty, set global chain to NULL.
-    if (!next && !prev) {
-        g_ybuffer_global_chain = NULL;
+    } else {
+        g_ybuffer_global_chain = next;
     }
 
     _ybuffer_thread_chain_add(buffer);
