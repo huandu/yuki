@@ -197,6 +197,12 @@ void * ybuffer_alloc(ybuffer_t * buffer, ysize_t size)
     return (void *)ret;
 }
 
+void * ybuffer_simple_alloc(ysize_t size)
+{
+    ybuffer_t * buffer = ybuffer_create(size);
+    return ybuffer_alloc(buffer, size);
+}
+
 ysize_t ybuffer_available_size(const ybuffer_t * buffer)
 {
     if (!buffer) {

@@ -8,8 +8,8 @@ PROJECT_NAME = yuki
 LIB = lib$(PROJECT_NAME).a
 
 OBJS  = $(patsubst %.c,%.o,$(wildcard *.c))
-LIBS = -lpthread -lz
-INCS =  
+LIBS = -L/usr/local/webserver/mysql/lib/mysql/ -lmysqlclient_r -lpthread -lz
+INCS = -I/usr/local/webserver/mysql/include/mysql/ 
 DFLAGS =
 CFLAGS = $(INCS) -std=c99 -Wall -Werror -g
 RM = rm -f

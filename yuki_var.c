@@ -250,7 +250,9 @@ ybool_t _yvar_clone_internal(ybuffer_t * buffer, yvar_t ** new_var, const yvar_t
 
     // buffer MUST be empty.
     YUKI_ASSERT(!ybuffer_available_size(buffer));
+
     YUKI_LOG_DEBUG("var is cloned");
+    yvar_set_option(*yvar, YVAR_OPTION_HOLD_RESOURCE);
     *new_var = yvar;
     return ytrue;
 }
@@ -1283,8 +1285,8 @@ ybool_t _yvar_list_push_back(yvar_t * yvar, yvar_t * node)
         return yfalse;
     }
 
-    if (yvar_has_option(*yvar, YVAR_OPTION_READONLY)) {
-        YUKI_LOG_DEBUG("list is readonly");
+    if (yvar_has_option(*yvar, YVAR_OPTION_READONLY | YVAR_OPTION_PINNED)) {
+        YUKI_LOG_DEBUG("list is readonly or pinned. cannot be modified.");
         return yfalse;
     }
 
@@ -1331,6 +1333,64 @@ ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value)
     return yfalse;
 }
 
+/**
+ * create a map thru a raw array of vars.
+ * this function can help user to create a map in a easier way.
+ * @code
+ * yvar_t raw_arr[] = {
+ *     YVAR_CSTR("uid"), YVAR_UINT64(123456UL), // "uid" => 123456
+ *     YVAR_CSTR("cash"), YVAR_INT64(234L),     // "cash" => 234
+ *     YVAR_CSTR("diamond"), YVAR_UINT64(123L), // "diamond" => 123
+ * };
+ * yvar_t * map;
+ * yvar_map_create(map, raw_arr, sizeof(raw_arr) / sizeof(raw_arr[0]);
+ *
+ * // a macro yvar_map_smart_create() is available to make code a little simpler.
+ * yvar_map_smart_create(map, raw_arr);
+ * @endcode
+ */
+ybool_t _yvar_map_create(yvar_t ** map, yvar_t raw_arr[], ysize_t size)
+{
+    if (!map || !raw_arr || !size) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    ysize_t key_size = (size + 1) / 2;
+
+    // only if raw arr size is greater than 2, it needs to be sorted.
+    if (size > 2) {
+        ysize_t adjust_size = key_size * 2 - 1;
+        ysize_t index = 1;
+        ysize_t cur = 2;
+
+        yvar_t temp = raw_arr[index];
+    
+        // move item with odd index to the tail of array.
+        // for instance:
+        // arr = {0, 1, 2, 3, 4, 5} => {0, 2, 4, 1, 3, 5}
+        do {
+            // don't use yvar_assign(), as the readonly option is not considered in this case.
+            raw_arr[index] = raw_arr[cur];
+            index = cur;
+
+            if (index < key_size) {
+                cur = index * 2;
+            } else {
+                cur = index * 2 - adjust_size;
+            }
+        } while (cur != 1);
+
+        raw_arr[index] = temp;
+    }
+
+    yvar_t keys = YVAR_ARRAY_WITH_SIZE(raw_arr, key_size);
+    yvar_t values = YVAR_ARRAY_WITH_SIZE(raw_arr + key_size, size / 2);
+    yvar_t local_map = YVAR_MAP(keys, values);
+
+    return yvar_clone(*map, local_map);
+}
+
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
 {
     if (!lhs || !rhs) {
@@ -1338,7 +1398,7 @@ ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
         return yfalse;
     }
 
-    if (yvar_has_option(*lhs, YVAR_OPTION_READONLY)) {
+    if (yvar_has_option(*lhs, YVAR_OPTION_READONLY | YVAR_OPTION_PINNED)) {
         YUKI_LOG_DEBUG("left hand side value is readonly");
         return yfalse;
     }
@@ -1370,12 +1430,30 @@ ybool_t _yvar_pin(yvar_t ** new_var, const yvar_t * old_var)
     ysize_t size = _yvar_mem_size(old_var);
     ybuffer_t * buffer = ybuffer_create_global(size);
 
-    return _yvar_clone_internal(buffer, new_var, old_var);
+    ybool_t ret = _yvar_clone_internal(buffer, new_var, old_var);
+    yvar_set_option(**new_var, YVAR_OPTION_PINNED);
+    return ret;
 }
 
 ybool_t _yvar_unpin(yvar_t * yvar)
 {
-    return ybuffer_destroy_global_pointer(yvar);
+    if (!yvar) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    if (!yvar_has_option(*yvar, YVAR_OPTION_PINNED)) {
+        YUKI_LOG_DEBUG("var is not pinned");
+        return yfalse;
+    }
+
+    if (!ybuffer_destroy_global_pointer(yvar)) {
+        YUKI_LOG_WARNING("fail to destroy global pointer");
+        return yfalse;
+    }
+
+    yvar_unset_option(*yvar, YVAR_OPTION_PINNED);
+    return ytrue;
 }
 
 ybool_t _yvar_memzero(yvar_t * yvar)

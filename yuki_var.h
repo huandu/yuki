@@ -26,6 +26,7 @@ extern "C" {
 #define YVAR_CSTR(d) _YVAR_INIT(YVAR_TYPE_CSTR, ycstr, YCSTR((d)))
 #define YVAR_STR() _YVAR_INIT(YVAR_TYPE_STR, ystr, {0})
 #define YVAR_ARRAY(d) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = sizeof((d)) / sizeof(yvar_t), .yvars = (d)})
+#define YVAR_ARRAY_WITH_SIZE(d, s) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = (s), .yvars = (d)})
 #define YVAR_LIST() _YVAR_INIT(YVAR_TYPE_LIST, ylist, {0})
 #define YVAR_MAP(k, v) _YVAR_INIT(YVAR_TYPE_MAP, ymap, {&(k), &(v)})
 
@@ -76,6 +77,14 @@ extern "C" {
 #define yvar_array(yvar, d) do { \
         yvar_t * pointer = &(yvar); \
         yarray_t array = {sizeof((d)) / sizeof(yvar_t), (d)}; \
+        pointer->type = YVAR_TYPE_ARRAY; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.yarray_data = array; \
+    } while (0)
+#define yvar_array_with_size(yvar, d, s) do { \
+        yvar_t * pointer = &(yvar); \
+        yarray_t array = {(s), (d)}; \
         pointer->type = YVAR_TYPE_ARRAY; \
         pointer->version = YUKI_VAR_VERSION; \
         pointer->options = YVAR_OPTION_DEFAULT; \
@@ -141,6 +150,8 @@ extern "C" {
 #define yvar_list_push_back(yvar, node) _yvar_list_push_back(&(yvar), &(node))
 
 #define yvar_map_get(map, k, v) _yvar_map_get(&(map), &(k), &(v))
+#define yvar_map_create(map, raw_arr, size) _yvar_map_create(&(map), (raw_arr), size)
+#define yvar_map_smart_create(map, raw_arr) _yvar_map_create(&(map), (raw_arr), sizeof((raw_arr)) / sizeof((raw_arr)[0]))
 
 #define yvar_assign(lhs, rhs) _yvar_assign(&(lhs), &(rhs))
 #define yvar_clone(new_var, old_var) _yvar_clone(&(new_var), &(old_var))
@@ -151,7 +162,7 @@ extern "C" {
 
 #define yvar_has_option(yvar, opt) ((yvar).options & (opt))
 #define yvar_set_option(yvar, opt) ((yvar).options |= (opt))
-#define yvar_reset_option(yvar, opt) ((yvar).options &= ~(opt))
+#define yvar_unset_option(yvar, opt) ((yvar).options &= ~(opt))
 
 /** get read/write reference of internal string buffer of cstr var. */
 #define yvar_cstr_buffer(yvar) ((yvar).data.ycstr_data.str)
@@ -326,6 +337,7 @@ ysize_t _yvar_array_size(const yvar_t * pyvar);
 ybool_t _yvar_list_push_back(yvar_t * yvar, yvar_t * node);
 
 ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value);
+ybool_t _yvar_map_create(yvar_t ** map, yvar_t raw_arr[], ysize_t size);
 
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
 ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var);

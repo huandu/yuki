@@ -72,6 +72,7 @@ typedef enum _YVAR_OPTIONS {
     YVAR_OPTION_READONLY = 0x1, /**< yvar_assign() cannot modify readonly var */
     YVAR_OPTION_HOLD_RESOURCE = 0x2, /**< need to free memory */
     YVAR_OPTION_SORTED = 0x4, /**< array is sorted */
+    YVAR_OPTION_PINNED = 0x8, /**< var is pinned. pinned var cannot be modified until upinned. */
 } YVAR_OPTIONS;
 
 typedef int8_t ybool_t;
@@ -150,19 +151,57 @@ typedef struct _ylist_node_t {
     yvar_t yvar;
 } ylist_node_t;
 
+typedef enum _ytable_hash_method_t {
+    YTABLE_HASH_METHOD_INVALID,
+    YTABLE_HASH_METHOD_DEFAULT,
+    YTABLE_HASH_METHOD_KEY_HASH,
+    YTABLE_HASH_METHOD_MAX,
+} ytable_hash_method_t;
+
+typedef enum _ytable_verb_t {
+    YTABLE_VERB_NULL,
+    YTABLE_VERB_SELECT,
+    YTABLE_VERB_UPDATE,
+    YTABLE_VERB_INSERT,
+    YTABLE_VERB_DELETE,
+} ytable_verb_t;
+
 typedef struct _ytable_t {
-    yvar_t * condition;
-    yvar_t * params;
-    yvar_t * hash_key;
+    yvar_t * fields;
+    yvar_t * conditions;
+    yvar_t * hash_value;
+    yvar_t * order_by;
+    yint32_t limit;
+    yint32_t offset;
     yvar_t * sql;
-    ysize_t table_index;
+    ytable_verb_t verb;
+    ysize_t ytable_index; /**< index in ytable conf. */
 } ytable_t;
 
+struct _ytable_connection_t;
+
+typedef struct _ytable_connection_thread_data_t {
+    struct _ytable_connection_t * connections;
+    ysize_t size;
+} ytable_connection_thread_data_t;
+
 typedef struct _ytable_config_t {
-    char * table_name;
-    char * hash_method;
+    const char * table_name;
+    const char * hash_key;
     yvar_t * params;
+    yvar_t * db_index;
+    ytable_hash_method_t hash_method;
 } ytable_config_t;
+
+typedef struct _ytable_db_config_t {
+    const char * db_name;
+    const char * host;
+    const char * user;
+    const char * password;
+    const char * database;
+    const char * character_set;
+    yuint32_t port;
+} ytable_db_config_t;
 
 typedef struct _ybuffer_t {
     ysize_t size;
