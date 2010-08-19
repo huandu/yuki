@@ -24,6 +24,7 @@ extern "C" {
 #define YVAR_INT64(d) _YVAR_INIT(YVAR_TYPE_INT64, yint64, (d))
 #define YVAR_UINT64(d) _YVAR_INIT(YVAR_TYPE_UINT64, yuint64, (d))
 #define YVAR_CSTR(d) _YVAR_INIT(YVAR_TYPE_CSTR, ycstr, YCSTR((d)))
+#define YVAR_CSTR_WITH_SIZE(d, s) _YVAR_INIT(YVAR_TYPE_CSTR, ycstr, YCSTR_WITH_SIZE((d), (s)))
 #define YVAR_STR() _YVAR_INIT(YVAR_TYPE_STR, ystr, {0})
 #define YVAR_ARRAY(d) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = sizeof((d)) / sizeof(yvar_t), .yvars = (d)})
 #define YVAR_ARRAY_WITH_SIZE(d, s) _YVAR_INIT(YVAR_TYPE_ARRAY, yarray, {.size = (s), .yvars = (d)})
@@ -61,6 +62,14 @@ extern "C" {
 #define yvar_cstr(yvar, d) do { \
         yvar_t * pointer = &(yvar); \
         ycstr_t str = {sizeof((d)) - 1, (d)}; \
+        pointer->type = YVAR_TYPE_CSTR; \
+        pointer->version = YUKI_VAR_VERSION; \
+        pointer->options = YVAR_OPTION_DEFAULT; \
+        pointer->data.ycstr_data = str; \
+    } while (0)
+#define yvar_cstr_with_size(yvar, d, s) do { \
+        yvar_t * pointer = &(yvar); \
+        ycstr_t str = {(s), (d)}; \
         pointer->type = YVAR_TYPE_CSTR; \
         pointer->version = YUKI_VAR_VERSION; \
         pointer->options = YVAR_OPTION_DEFAULT; \
@@ -125,6 +134,9 @@ extern "C" {
 #define yvar_is_list(yvar)      _YVAR_IS_TYPE((yvar), YVAR_TYPE_LIST)
 #define yvar_is_map(yvar)       _YVAR_IS_TYPE((yvar), YVAR_TYPE_MAP)
 
+#define yvar_like_string(yvar)  _yvar_like_string(&(yvar))
+#define yvar_like_int(yvar)     _yvar_like_int(&(yvar))
+
 #define yvar_get_bool(yvar, output) _yvar_get_bool(&(yvar), &(output))
 #define yvar_get_int8(yvar, output) _yvar_get_int8(&(yvar), &(output))
 #define yvar_get_uint8(yvar, output) _yvar_get_uint8(&(yvar), &(output))
@@ -138,7 +150,7 @@ extern "C" {
 #define yvar_get_str(yvar, output, size) _yvar_get_str(&(yvar), (output), (size))
 
 #define yvar_count(yvar) _yvar_count(&(yvar))
-#define yvar_is_equal(lhs, rhs) _yvar_is_equal(&(lhs), &(rhs))
+#define yvar_equal(lhs, rhs) _yvar_equal(&(lhs), &(rhs))
 #define yvar_compare(lhs, rhs) _yvar_compare(&(lhs), &(rhs))
 
 #define yvar_str_strlen(yvar) _yvar_cstr_strlen(&(yvar))
@@ -150,8 +162,10 @@ extern "C" {
 #define yvar_list_push_back(yvar, node) _yvar_list_push_back(&(yvar), &(node))
 
 #define yvar_map_get(map, k, v) _yvar_map_get(&(map), &(k), &(v))
-#define yvar_map_create(map, raw_arr, size) _yvar_map_create(&(map), (raw_arr), size)
-#define yvar_map_smart_create(map, raw_arr) _yvar_map_create(&(map), (raw_arr), sizeof((raw_arr)) / sizeof((raw_arr)[0]))
+#define yvar_map_clone(map, raw_arr, size) _yvar_map_clone(&(map), (raw_arr), (size))
+#define yvar_map_smart_clone(map, raw_arr) _yvar_map_clone(&(map), (raw_arr), (sizeof((raw_arr)) / sizeof((raw_arr)[0])))
+#define yvar_map_pin(map, raw_arr, size) _yvar_map_pin(&(map), (raw_arr), (size))
+#define yvar_map_smart_pin(map, raw_arr) _yvar_map_pin(&(map), (raw_arr), (sizeof((raw_arr)) / sizeof((raw_arr)[0])))
 
 #define yvar_assign(lhs, rhs) _yvar_assign(&(lhs), &(rhs))
 #define yvar_clone(new_var, old_var) _yvar_clone(&(new_var), &(old_var))
@@ -325,8 +339,11 @@ _YVAR_GET_FUNCTION_DECLARE(uint64);
 _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(cstr);
 _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(str);
 
+ybool_t _yvar_like_string(const yvar_t * yvar);
+ybool_t _yvar_like_int(const yvar_t * yvar);
+
 ysize_t _yvar_count(const yvar_t * yvar);
-ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs);
+ybool_t _yvar_equal(const yvar_t * plhs, const yvar_t * prhs);
 yint8_t _yvar_compare(const yvar_t * plhs, const yvar_t * prhs);
 
 ysize_t _yvar_cstr_strlen(const yvar_t * yvar);
@@ -337,7 +354,8 @@ ysize_t _yvar_array_size(const yvar_t * pyvar);
 ybool_t _yvar_list_push_back(yvar_t * yvar, yvar_t * node);
 
 ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value);
-ybool_t _yvar_map_create(yvar_t ** map, yvar_t raw_arr[], ysize_t size);
+ybool_t _yvar_map_clone(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size);
+ybool_t _yvar_map_pin(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size);
 
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
 ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var);

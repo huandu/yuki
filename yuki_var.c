@@ -9,10 +9,7 @@ static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, 
 
 static ybool_t _ybool_to_str(ybool_t ybool, char * output, ysize_t size)
 {
-    if (!output || !size) {
-        YUKI_LOG_FATAL("invalid param");
-        return yfalse;
-    }
+    YUKI_ASSERT(output && size);
 
     char buf[16];
     int n = snprintf(buf, sizeof(buf), ybool? "true": "false");
@@ -34,24 +31,21 @@ static ybool_t _ybool_to_str(ybool_t ybool, char * output, ysize_t size)
 #define _YUKI_INT_TYPE_TO_STR_FUNCTION(t, s) \
     static ybool_t _##t##_to_str(t##_t t, char * output, ysize_t size) \
     { \
-        if (!output || !size) { \
-            YUKI_LOG_FATAL("invalid param"); \
-            return yfalse; \
-        } \
-\
+        YUKI_ASSERT(output && size); \
+        \
         char buf[32]; \
         int n = snprintf(buf, sizeof(buf), s, t); \
-\
+        \
         if (n < 0) { \
             YUKI_LOG_FATAL("snprintf fails with err %d", n); \
             return yfalse; \
         } \
-\
+        \
         if (n >= size) { \
             YUKI_LOG_WARNING("buffer length is too small. [required: %d] [actual: %u]", n + 1, size); \
             return yfalse; \
         } \
-\
+        \
         strncpy(output, buf, n + 1); \
         return ytrue; \
     }
@@ -67,10 +61,7 @@ _YUKI_INT_TYPE_TO_STR_FUNCTION(yuint64, "%" PRIu64)
 
 static ybool_t _ycstr_to_str(const ycstr_t * ycstr, char * output, ysize_t size)
 {
-    if (!ycstr || !output || !size) {
-        YUKI_LOG_FATAL("invalid param");
-        return yfalse;
-    }
+    YUKI_ASSERT(ycstr && output && size);
 
     if (ycstr->size > size) {
         YUKI_LOG_WARNING("buffer length is too small. [required: %u] [actual: %u]", ycstr->size, size);
@@ -87,6 +78,8 @@ static ybool_t _ycstr_to_str(const ycstr_t * ycstr, char * output, ysize_t size)
  */
 static ysize_t _yvar_mem_size(const yvar_t * yvar)
 {
+    YUKI_ASSERT(yvar);
+
     ysize_t size = ybuffer_round_up(sizeof(yvar_t));
 
     switch (yvar->type) {
@@ -128,6 +121,8 @@ static ysize_t _yvar_mem_size(const yvar_t * yvar)
  */
 static ybool_t _yvar_clone_internal_element(ybuffer_t * buffer, yvar_t * new_var, const yvar_t * old_var)
 {
+    YUKI_ASSERT(buffer && new_var && old_var);
+
     yvar_memzero(*new_var);
 
     if (!yvar_assign(*new_var, *old_var)) {
@@ -229,8 +224,31 @@ static ybool_t _yvar_clone_internal_element(ybuffer_t * buffer, yvar_t * new_var
     return ytrue;
 }
 
-ybool_t _yvar_clone_internal(ybuffer_t * buffer, yvar_t ** new_var, const yvar_t * old_var)
+static ybool_t _yvar_map_assoc_array_sort(const yvar_t src[][2], ysize_t src_size,
+    yvar_t even_dst[], ysize_t even_size,
+    yvar_t odd_dst[], ysize_t odd_size)
 {
+    YUKI_ASSERT(src && even_dst && odd_dst);
+    YUKI_ASSERT(src_size == odd_size);
+    YUKI_ASSERT(src_size == even_size);
+
+    // copy odd value to odd array, even to even array
+    ysize_t index = 0;
+    for (; index < src_size; index++) {
+        // NOTE: don't use yvar_assign, as dst is not initialized.
+        even_dst[index] = src[index][0];
+        odd_dst[index] = src[index][1];
+    }
+
+    // TODO: sort array
+
+    return ytrue;
+}
+
+static ybool_t _yvar_clone_internal(ybuffer_t * buffer, yvar_t ** new_var, const yvar_t * old_var)
+{
+    YUKI_ASSERT(new_var);
+
     if (!buffer) {
         YUKI_LOG_WARNING("out of memory");
         return yfalse;
@@ -259,6 +277,8 @@ ybool_t _yvar_clone_internal(ybuffer_t * buffer, yvar_t ** new_var, const yvar_t
 
 static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, const yvar_t * var, ybool_t need_clone)
 {
+    YUKI_ASSERT(buffer && list && var);
+
     ylist_node_t * node = ybuffer_smart_alloc(buffer, ylist_node_t);
 
     if (!node) {
@@ -1090,6 +1110,16 @@ ybool_t _yvar_get_cstr(const yvar_t * yvar, char * output, ysize_t size)
     return ytrue;
 }
 
+ybool_t _yvar_like_string(const yvar_t * yvar)
+{
+    return yvar? (yvar_is_cstr(*yvar) || yvar_is_str(*yvar)): yfalse;
+}
+
+ybool_t _yvar_like_int(const yvar_t * yvar)
+{
+    return yvar? (yvar->type >= YVAR_TYPE_INT_MIN && yvar->type <= YVAR_TYPE_INT_MAX): yfalse;
+}
+
 /**
  * count of var. the symantic is similar to the count() in PHP.
  * only count elements in array or list.
@@ -1135,7 +1165,7 @@ ysize_t _yvar_count(const yvar_t * yvar)
     }
 }
 
-ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
+ybool_t _yvar_equal(const yvar_t * plhs, const yvar_t * prhs)
 {
     if (plhs == prhs) {
         return ytrue;
@@ -1198,7 +1228,7 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
 
             ysize_t cnt;
             for (cnt = 0; cnt < lhs_cnt; cnt++) {
-                if (!yvar_is_equal(plhs->data.yarray_data.yvars[cnt], prhs->data.yarray_data.yvars[cnt])) {
+                if (!yvar_equal(plhs->data.yarray_data.yvars[cnt], prhs->data.yarray_data.yvars[cnt])) {
                     return yfalse;
                 }
             }
@@ -1213,7 +1243,7 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
             ylist_node_t * rhs_tail = prhs->data.ylist_data.tail;
 
             while (lhs_head != lhs_tail && rhs_head != rhs_tail) {
-                if (!yvar_is_equal(lhs_head->yvar, rhs_head->yvar)) {
+                if (!yvar_equal(lhs_head->yvar, rhs_head->yvar)) {
                     return yfalse;
                 }
 
@@ -1224,11 +1254,11 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
             return lhs_head == lhs_tail && rhs_head == rhs_tail;
         }
         case YVAR_TYPE_MAP:
-            if (!yvar_is_equal(*plhs->data.ymap_data.keys, *prhs->data.ymap_data.keys)) {
+            if (!yvar_equal(*plhs->data.ymap_data.keys, *prhs->data.ymap_data.keys)) {
                 return yfalse;
             }
 
-            return yvar_is_equal(*plhs->data.ymap_data.values, *prhs->data.ymap_data.values);
+            return yvar_equal(*plhs->data.ymap_data.values, *prhs->data.ymap_data.values);
         default:
             YUKI_LOG_FATAL("impossible type value %d", plhs->type);
             return yfalse;
@@ -1237,7 +1267,7 @@ ybool_t _yvar_is_equal(const yvar_t * plhs, const yvar_t * prhs)
 
 ysize_t _yvar_cstr_strlen(const yvar_t * yvar)
 {
-    if (!yvar_is_str(*yvar) && !yvar_is_cstr(*yvar)) {
+    if (!yvar_like_string(*yvar)) {
         YUKI_LOG_FATAL("var is not str or cstr");
         return 0;
     }
@@ -1321,7 +1351,7 @@ ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value)
     // TODO: for sorted map, use binary search
     ysize_t i = 0;
     FOREACH_YVAR_ARRAY(*keys, v) {
-        if (yvar_is_equal(*v, *key)) {
+        if (yvar_equal(*v, *key)) {
             return yvar_array_get(*values, i, *value);
         }
 
@@ -1334,61 +1364,63 @@ ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value)
 }
 
 /**
- * create a map thru a raw array of vars.
+ * clone a map thru a raw key-value array of vars.
  * this function can help user to create a map in a easier way.
  * @code
- * yvar_t raw_arr[] = {
- *     YVAR_CSTR("uid"), YVAR_UINT64(123456UL), // "uid" => 123456
- *     YVAR_CSTR("cash"), YVAR_INT64(234L),     // "cash" => 234
- *     YVAR_CSTR("diamond"), YVAR_UINT64(123L), // "diamond" => 123
+ * yvar_t raw_arr[][2] = {
+ *     {YVAR_CSTR("uid"), YVAR_UINT64(123456UL)}, // "uid" => 123456
+ *     {YVAR_CSTR("cash"), YVAR_INT64(234L)},     // "cash" => 234
+ *     {YVAR_CSTR("diamond"), YVAR_UINT64(123L)}, // "diamond" => 123
  * };
  * yvar_t * map;
- * yvar_map_create(map, raw_arr, sizeof(raw_arr) / sizeof(raw_arr[0]);
+ * yvar_map_clone(map, raw_arr, sizeof(raw_arr) / sizeof(raw_arr[0]);
+ * // or
+ * yvar_map_pin(map, raw_arr, sizeof(raw_arr) / sizeof(raw_arr[0]);
  *
  * // a macro yvar_map_smart_create() is available to make code a little simpler.
- * yvar_map_smart_create(map, raw_arr);
+ * yvar_map_smart_clone(map, raw_arr);
+ * // or
+ * yvar_map_smart_pin(map, raw_arr);
  * @endcode
  */
-ybool_t _yvar_map_create(yvar_t ** map, yvar_t raw_arr[], ysize_t size)
+ybool_t _yvar_map_clone(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size)
 {
     if (!map || !raw_arr || !size) {
         YUKI_LOG_FATAL("invalid param");
         return yfalse;
     }
 
-    ysize_t key_size = (size + 1) / 2;
+    yvar_t even_array[size];
+    yvar_t odd_array[size];
+    _yvar_map_assoc_array_sort(raw_arr, size, even_array, size, odd_array, size);
 
-    // only if raw arr size is greater than 2, it needs to be sorted.
-    if (size > 2) {
-        ysize_t adjust_size = key_size * 2 - 1;
-        ysize_t index = 1;
-        ysize_t cur = 2;
-
-        yvar_t temp = raw_arr[index];
-    
-        // move item with odd index to the tail of array.
-        // for instance:
-        // arr = {0, 1, 2, 3, 4, 5} => {0, 2, 4, 1, 3, 5}
-        do {
-            // don't use yvar_assign(), as the readonly option is not considered in this case.
-            raw_arr[index] = raw_arr[cur];
-            index = cur;
-
-            if (index < key_size) {
-                cur = index * 2;
-            } else {
-                cur = index * 2 - adjust_size;
-            }
-        } while (cur != 1);
-
-        raw_arr[index] = temp;
-    }
-
-    yvar_t keys = YVAR_ARRAY_WITH_SIZE(raw_arr, key_size);
-    yvar_t values = YVAR_ARRAY_WITH_SIZE(raw_arr + key_size, size / 2);
+    yvar_t keys = YVAR_ARRAY(even_array);
+    yvar_t values = YVAR_ARRAY(odd_array);
     yvar_t local_map = YVAR_MAP(keys, values);
 
     return yvar_clone(*map, local_map);
+}
+
+/**
+ * pin a map thru a raw key-value array of vars.
+ * @see _yvar_map_clone()
+ */
+ybool_t _yvar_map_pin(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size)
+{
+    if (!map || !raw_arr || !size) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    yvar_t even_array[size];
+    yvar_t odd_array[size];
+    _yvar_map_assoc_array_sort(raw_arr, size, even_array, size, odd_array, size);
+
+    yvar_t keys = YVAR_ARRAY(even_array);
+    yvar_t values = YVAR_ARRAY(odd_array);
+    yvar_t local_map = YVAR_MAP(keys, values);
+
+    return yvar_pin(*map, local_map);
 }
 
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs)
@@ -1429,8 +1461,13 @@ ybool_t _yvar_pin(yvar_t ** new_var, const yvar_t * old_var)
 
     ysize_t size = _yvar_mem_size(old_var);
     ybuffer_t * buffer = ybuffer_create_global(size);
-
     ybool_t ret = _yvar_clone_internal(buffer, new_var, old_var);
+
+    if (!ret) {
+        YUKI_LOG_FATAL("unable to pin var");
+        return yfalse;
+    }
+
     yvar_set_option(**new_var, YVAR_OPTION_PINNED);
     return ret;
 }

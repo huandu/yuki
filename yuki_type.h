@@ -46,6 +46,10 @@ typedef enum _YBOOL_VALUE {
     ytrue,
 } YBOOL_VALUE;
 
+// NOTE: keep int-like type continuous so that yvar_like_int() can be easier
+#define YVAR_TYPE_INT_MIN YVAR_TYPE_BOOL
+#define YVAR_TYPE_INT_MAX YVAR_TYPE_UINT64
+
 typedef enum _YVAR_TYPE {
     YVAR_TYPE_UNDEFINED = 0,
     YVAR_TYPE_BOOL,
@@ -62,6 +66,7 @@ typedef enum _YVAR_TYPE {
     YVAR_TYPE_ARRAY,
     YVAR_TYPE_LIST,
     YVAR_TYPE_MAP,
+    YVAR_TYPE_MAX, // max
 } YVAR_TYPE;
 
 /**
@@ -151,6 +156,21 @@ typedef struct _ylist_node_t {
     yvar_t yvar;
 } ylist_node_t;
 
+typedef struct _ybuffer_t {
+    ysize_t size;
+    ysize_t offset;
+    struct _ybuffer_t * next;
+    char buffer[];
+} ybuffer_t;
+
+/**
+ * cookie for global buffer.
+ */
+typedef struct _ybuffer_cookie_t {
+    ybuffer_t * prev;
+    yuint64_t padding;
+} ybuffer_cookie_t;
+
 typedef enum _ytable_hash_method_t {
     YTABLE_HASH_METHOD_INVALID,
     YTABLE_HASH_METHOD_DEFAULT,
@@ -159,11 +179,12 @@ typedef enum _ytable_hash_method_t {
 } ytable_hash_method_t;
 
 typedef enum _ytable_verb_t {
-    YTABLE_VERB_NULL,
+    YTABLE_VERB_NULL = 0,
     YTABLE_VERB_SELECT,
     YTABLE_VERB_UPDATE,
     YTABLE_VERB_INSERT,
     YTABLE_VERB_DELETE,
+    YTABLE_VERB_MAX,
 } ytable_verb_t;
 
 typedef struct _ytable_t {
@@ -173,11 +194,13 @@ typedef struct _ytable_t {
     yvar_t * order_by;
     yint32_t limit;
     yint32_t offset;
-    yvar_t * sql;
+    ysize_t affected_rows;
+    yvar_t sql;
     ytable_verb_t verb;
     ysize_t ytable_index; /**< index in ytable conf. */
 } ytable_t;
 
+// declared in yuki_table.c to avoid dependence on <mysql.h>
 struct _ytable_connection_t;
 
 typedef struct _ytable_connection_thread_data_t {
@@ -187,6 +210,7 @@ typedef struct _ytable_connection_thread_data_t {
 
 typedef struct _ytable_config_t {
     const char * table_name;
+    ysize_t name_len;
     const char * hash_key;
     yvar_t * params;
     yvar_t * db_index;
@@ -203,20 +227,19 @@ typedef struct _ytable_db_config_t {
     yuint32_t port;
 } ytable_db_config_t;
 
-typedef struct _ybuffer_t {
-    ysize_t size;
-    ysize_t offset;
-    struct _ybuffer_t * next;
-    char buffer[];
-} ybuffer_t;
+// cheat compiler
+struct _ytable_mysql_res_t;
 
-/**
- * cookie for global buffer.
- */
-typedef struct _ybuffer_cookie_t {
-    ybuffer_t * prev;
-    yuint64_t padding;
-} ybuffer_cookie_t;
+typedef ybool_t (*ytable_sql_validator_func)(const ytable_t * ytable);
+typedef ybool_t (*ytable_sql_builder_func)(ytable_t * ytable);
+typedef ybool_t (*ytable_sql_result_parser_func)(const ytable_t * ytable, struct _ytable_mysql_res_t * mysql_res, yvar_t ** result);
+
+typedef struct _ytable_sql_buider_t {
+    const char * verb;
+    ytable_sql_validator_func validator;
+    ytable_sql_builder_func builder;
+    ytable_sql_result_parser_func parser;
+} ytable_sql_builder_t;
 
 #ifdef __cplusplus
 }

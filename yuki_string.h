@@ -5,7 +5,8 @@
 extern "C" {
 #endif
 
-#define YCSTR(s) {.size = sizeof((s)) - 1, .str = s}
+#define YCSTR(s) {sizeof((s)) - 1, s}
+#define YCSTR_WITH_SIZE(s, len) {(len), s}
 
 #ifdef __cplusplus
 }
