@@ -63,12 +63,13 @@ static ybool_t _ycstr_to_str(const ycstr_t * ycstr, char * output, ysize_t size)
 {
     YUKI_ASSERT(ycstr && output && size);
 
-    if (ycstr->size > size) {
+    if (ycstr->size + 1 > size) {
         YUKI_LOG_WARNING("buffer length is too small. [required: %u] [actual: %u]", ycstr->size, size);
         return yfalse;
     }
 
     strncpy(output, ycstr->str, ycstr->size);
+    output[ycstr->size] = '\0';
     return ytrue;
 }
 
@@ -224,7 +225,7 @@ static ybool_t _yvar_clone_internal_element(ybuffer_t * buffer, yvar_t * new_var
     return ytrue;
 }
 
-static ybool_t _yvar_map_assoc_array_sort(const yvar_t src[][2], ysize_t src_size,
+static ybool_t _yvar_map_assoc_array_sort(yvar_map_kv_t src, ysize_t src_size,
     yvar_t even_dst[], ysize_t even_size,
     yvar_t odd_dst[], ysize_t odd_size)
 {
@@ -1383,7 +1384,7 @@ ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value)
  * yvar_map_smart_pin(map, raw_arr);
  * @endcode
  */
-ybool_t _yvar_map_clone(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size)
+ybool_t _yvar_map_clone(yvar_t ** map, yvar_map_kv_t raw_arr, ysize_t size)
 {
     if (!map || !raw_arr || !size) {
         YUKI_LOG_FATAL("invalid param");
@@ -1405,7 +1406,7 @@ ybool_t _yvar_map_clone(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size)
  * pin a map thru a raw key-value array of vars.
  * @see _yvar_map_clone()
  */
-ybool_t _yvar_map_pin(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size)
+ybool_t _yvar_map_pin(yvar_t ** map, yvar_map_kv_t raw_arr, ysize_t size)
 {
     if (!map || !raw_arr || !size) {
         YUKI_LOG_FATAL("invalid param");

@@ -455,7 +455,7 @@ TEST(YukiVarTest, VarMapCloneAndPin) {
     yvar_t raw_arr2[] = {
         yvar5, yvar6, yvar7, yvar8
     };
-    yvar_t raw_key_value[][2] = {
+    yvar_map_kv_t raw_key_value = {
         {yvar1, yvar5},
         {yvar2, yvar6},
         {yvar3, yvar7},

@@ -241,6 +241,8 @@ typedef struct _ytable_sql_buider_t {
     ytable_sql_result_parser_func parser;
 } ytable_sql_builder_t;
 
+typedef yvar_t yvar_map_kv_t[][2];
+
 #ifdef __cplusplus
 }
 #endif

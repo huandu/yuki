@@ -641,18 +641,17 @@ static ybool_t _ytable_sql_select_result_parser(const ytable_t * ytable, ytable_
         return ytrue;
     }
 
-    ysize_t field_cnt = yvar_count(*ytable->fields);
-    ysize_t num_fields = mysql_num_fields(res);
+    ysize_t field_cnt = mysql_num_fields(res);
 
-    if (field_cnt != num_fields) {
-        YUKI_LOG_FATAL("actual query field count doesn't match original query. what's wrong? [old: %lu] [actual: %lu]",
-            field_cnt, num_fields);
+    if (!field_cnt) {
+        YUKI_LOG_FATAL("field count is 0. what's wrong?");
         return yfalse;
     }
 
     yvar_t local_result[ytable->affected_rows * field_cnt];
     enum enum_field_types field_types[field_cnt];
     yuint64_t field_flags[field_cnt];
+    yvar_t field_raw_key[field_cnt];
     MYSQL_ROW row;
     MYSQL_FIELD * field = NULL;
     uint64_t * lengths = NULL;
@@ -669,7 +668,10 @@ static ybool_t _ytable_sql_select_result_parser(const ytable_t * ytable, ytable_
 
         field_types[cnt] = field->type;
         field_flags[cnt] = field->flags;
+        yvar_cstr_with_size(field_raw_key[cnt], field->name, field->name_length);
     }
+
+    yvar_t field_keys = YVAR_ARRAY_WITH_SIZE(field_raw_key, field_cnt);
 
     for (cnt = 0; (row = mysql_fetch_row(res)) != NULL; cnt++) {
         YUKI_ASSERT(field_cnt == mysql_num_fields(res));
@@ -737,6 +739,9 @@ static ybool_t _ytable_sql_select_result_parser(const ytable_t * ytable, ytable_
                 case MYSQL_TYPE_STRING:
                 case MYSQL_TYPE_VAR_STRING:
                 case MYSQL_TYPE_BLOB:
+                // TODO: make special var type for timestamp and datetime
+                case MYSQL_TYPE_TIMESTAMP:
+                case MYSQL_TYPE_DATETIME:
                     yvar_cstr_with_size(local_result[cnt * field_cnt + i], row[i], lengths[i]);
                     break;
                 case MYSQL_TYPE_NULL:
@@ -756,7 +761,7 @@ static ybool_t _ytable_sql_select_result_parser(const ytable_t * ytable, ytable_
 
     for (i = 0; i < affected_rows; i++) {
         yvar_array_with_size(value_array[i], local_result + i * field_cnt, field_cnt);
-        yvar_map(map_array[i], *ytable->fields, value_array[i]);
+        yvar_map(map_array[i], field_keys, value_array[i]);
     }
 
     yvar_t result_var = YVAR_ARRAY_WITH_SIZE(map_array, affected_rows);
@@ -969,14 +974,21 @@ ybool_t _ytable_init()
     yvar_set_option(g_ytable_result_false, YVAR_OPTION_READONLY);
 
     // TODO: remove test code
-    g_ytable_configs = ybuffer_simple_alloc(sizeof(ytable_config_t) * 2);
-    memset(g_ytable_configs, 0, sizeof(ytable_config_t) * 2);
+    yvar_t db_index = YVAR_UINT32(0);
+
+    g_ytable_configs = ybuffer_simple_alloc(sizeof(ytable_config_t) * 3);
+    memset(g_ytable_configs, 0, sizeof(ytable_config_t) * 3);
     g_ytable_configs[0].table_name = "mytest";
     g_ytable_configs[0].name_len = _YTABLE_SQL_STRLEN("mytest");
     g_ytable_configs[0].hash_key = "uid";
-    yvar_t db_index = YVAR_UINT32(0);
     yvar_pin(g_ytable_configs[0].db_index, db_index);
-    g_ytable_configs[0].hash_method = YTABLE_HASH_METHOD_DEFAULT;
+
+    g_ytable_configs[1].hash_method = YTABLE_HASH_METHOD_DEFAULT;
+    g_ytable_configs[1].table_name = "mysample";
+    g_ytable_configs[1].name_len = _YTABLE_SQL_STRLEN("mysample");
+    g_ytable_configs[1].hash_key = "id";
+    yvar_pin(g_ytable_configs[1].db_index, db_index);
+    g_ytable_configs[1].hash_method = YTABLE_HASH_METHOD_DEFAULT;
 
     g_ytable_db_configs = ybuffer_simple_alloc(sizeof(ytable_db_config_t));
     g_ytable_db_configs[0].db_name = "162";
@@ -1013,13 +1025,18 @@ void _ytable_shutdown()
 
 ytable_t * ytable_instance(const char * table_name)
 {
+    if (!table_name) {
+        YUKI_LOG_FATAL("invalid param");
+        return NULL;
+    }
+
     if (!_ytable_inited()) {
         YUKI_LOG_FATAL("use ytable before init it");
         return NULL;
     }
 
-    ysize_t index = 0;
-    while (g_ytable_configs[index].table_name) {
+    ysize_t index;
+    for (index = 0; g_ytable_configs[index].table_name; index++) {
         if (!strcmp(table_name, g_ytable_configs[index].table_name)) {
             YUKI_LOG_DEBUG("table is found. [name: %s] [index: %lu]", table_name, index);
 
@@ -1030,23 +1047,32 @@ ytable_t * ytable_instance(const char * table_name)
                 return NULL;
             }
 
-            ytable_t * instance = ybuffer_smart_alloc(buffer, ytable_t);
+            ytable_t * ytable = ybuffer_smart_alloc(buffer, ytable_t);
 
-            if (!instance) {
+            if (!ytable) {
                 YUKI_LOG_WARNING("out of memory");
                 return NULL;
             }
 
-            memset(instance, 0, sizeof(ytable_t));
-            instance->ytable_index = index;
-            instance->limit = YTABLE_DEFAULT_LIMIT;
-            instance->offset = YTABLE_DEFAULT_OFFSET;
+            ytable->ytable_index = index;
 
-            return instance;
+            return ytable_reset(ytable);
         }
     }
 
     return NULL;
+}
+
+ytable_t * ytable_reset(ytable_t * ytable)
+{
+    ysize_t index = ytable->ytable_index;
+
+    memset(ytable, 0, sizeof(ytable_t));
+    ytable->ytable_index = index;
+    ytable->limit = YTABLE_DEFAULT_LIMIT;
+    ytable->offset = YTABLE_DEFAULT_OFFSET;
+
+    return ytable;
 }
 
 ybool_t _ytable_select(ytable_t * ytable, const yvar_t * fields)

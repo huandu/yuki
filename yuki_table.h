@@ -42,6 +42,7 @@ extern "C" {
 #define ytable_fetch_insert_id(ytable, insert_id) _ytable_fetch_insert_id((ytable), &(insert_id))
 
 ytable_t * ytable_instance(const char * table_name);
+ytable_t * ytable_reset(ytable_t * ytable);
 ybool_t _ytable_select(ytable_t * ytable, const yvar_t * fields);
 ybool_t _ytable_insert(ytable_t * ytable, const yvar_t * values);
 ybool_t _ytable_update(ytable_t * ytable, const yvar_t * values);

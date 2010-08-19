@@ -354,8 +354,8 @@ ysize_t _yvar_array_size(const yvar_t * pyvar);
 ybool_t _yvar_list_push_back(yvar_t * yvar, yvar_t * node);
 
 ybool_t _yvar_map_get(const yvar_t * map, const yvar_t * key, yvar_t * value);
-ybool_t _yvar_map_clone(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size);
-ybool_t _yvar_map_pin(yvar_t ** map, const yvar_t raw_arr[][2], ysize_t size);
+ybool_t _yvar_map_clone(yvar_t ** map, yvar_map_kv_t raw_arr, ysize_t size);
+ybool_t _yvar_map_pin(yvar_t ** map, yvar_map_kv_t raw_arr, ysize_t size);
 
 ybool_t _yvar_assign(yvar_t * lhs, const yvar_t * rhs);
 ybool_t _yvar_clone(yvar_t ** new_var, const yvar_t * old_var);

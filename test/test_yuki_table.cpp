@@ -20,30 +20,35 @@ TEST_F(YukiTableTest, InsertOne) {
     yvar_t field1 = YVAR_EMPTY();
     yvar_t field2 = YVAR_EMPTY();
     yvar_t field3 = YVAR_EMPTY();
+    yvar_t field4 = YVAR_EMPTY();
     yvar_t value1 = YVAR_EMPTY();
     yvar_t value2 = YVAR_EMPTY();
     yvar_t value3 = YVAR_EMPTY();
+    yvar_t value4 = YVAR_EMPTY();
     yvar_t cond_key1 = YVAR_EMPTY();
     yvar_t cond_value1 = YVAR_EMPTY();
     yvar_cstr(field1, "uid");
     yvar_cstr(field2, "diamond");
     yvar_cstr(field3, "cash");
+    yvar_cstr(field4, "created_at");
     yvar_cstr(value1, "1234567890");
     yvar_int64(value2, 21);
     yvar_int64(value3, 12);
+    yvar_cstr(value4, "2010-08-13 01:23:45");
     yvar_cstr(cond_key1, "uid");
     yvar_cstr(cond_value1, "1234567890");
 
-    yvar_t raw_fields[][2] = {
+    yvar_map_kv_t raw_fields = {
         {field1, value1},
         {field2, value2},
         {field3, value3},
+        {field4, value4},
     };
 
     yvar_t * insert_map;
     ASSERT_TRUE(yvar_map_smart_clone(insert_map, raw_fields));
 
-    yvar_t raw_cond[][2] = {
+    yvar_map_kv_t raw_cond = {
         {cond_key1, cond_value1},
     };
     yvar_t * cond;
@@ -68,22 +73,27 @@ TEST_F(YukiTableTest, SelectOne) {
     yvar_t field1 = YVAR_EMPTY();
     yvar_t field2 = YVAR_EMPTY();
     yvar_t field3 = YVAR_EMPTY();
+    yvar_t field4 = YVAR_EMPTY();
     yvar_t cond_key1 = YVAR_EMPTY();
     yvar_t cond_value1 = YVAR_EMPTY();
     yvar_cstr(field1, "uid");
     yvar_cstr(field2, "diamond");
     yvar_cstr(field3, "cash");
+    yvar_cstr(field4, "created_at");
     yvar_cstr(cond_key1, "uid");
     yvar_cstr(cond_value1, "1234567890");
 
+    yvar_t field_wildcard = YVAR_EMPTY();
+    yvar_cstr(field_wildcard, "*");
+
     yvar_t raw_fields[] = {
-        field1, field2, field3
+        field_wildcard
     };
 
     yvar_t fields = YVAR_EMPTY();
     yvar_array(fields, raw_fields);
 
-    yvar_t raw_cond[][2] = {
+    yvar_map_kv_t raw_cond = {
         {cond_key1, cond_value1},
     };
     yvar_t * cond;
@@ -111,21 +121,26 @@ TEST_F(YukiTableTest, SelectOne) {
     yvar_t uid_var = YVAR_EMPTY();
     yvar_t diamond_var = YVAR_EMPTY();
     yvar_t cash_var = YVAR_EMPTY();
+    yvar_t created_at_var = YVAR_EMPTY();
 
     ASSERT_TRUE(yvar_map_get(row1, field1, uid_var));
     ASSERT_TRUE(yvar_map_get(row1, field2, diamond_var));
     ASSERT_TRUE(yvar_map_get(row1, field3, cash_var));
+    ASSERT_TRUE(yvar_map_get(row1, field4, created_at_var));
 
     yvar_t expected_uid_var = YVAR_EMPTY();
     yvar_t expected_diamond_var = YVAR_EMPTY();
     yvar_t expected_cash_var = YVAR_EMPTY();
+    yvar_t expected_created_at = YVAR_EMPTY();
     yvar_cstr(expected_uid_var, "1234567890");
     yvar_int64(expected_diamond_var, 21);
     yvar_int64(expected_cash_var, 12);
+    yvar_cstr(expected_created_at, "2010-08-13 01:23:45");
 
     ASSERT_TRUE(yvar_equal(uid_var, expected_uid_var));
     ASSERT_TRUE(yvar_equal(diamond_var, expected_diamond_var));
     ASSERT_TRUE(yvar_equal(cash_var, expected_cash_var));
+    ASSERT_TRUE(yvar_equal(created_at_var, expected_created_at));
 }
 
 TEST_F(YukiTableTest, UpdateOne) {
@@ -146,7 +161,7 @@ TEST_F(YukiTableTest, UpdateOne) {
     yvar_cstr(cond_key1, "uid");
     yvar_cstr(cond_value1, "1234567890");
 
-    yvar_t raw_fields[][2] = {
+    yvar_map_kv_t raw_fields = {
         {field2, value2},
         {field3, value3},
     };
@@ -154,7 +169,7 @@ TEST_F(YukiTableTest, UpdateOne) {
     yvar_t * update_map;
     ASSERT_TRUE(yvar_map_smart_clone(update_map, raw_fields));
 
-    yvar_t raw_cond[][2] = {
+    yvar_map_kv_t raw_cond = {
         {cond_key1, cond_value1},
     };
     yvar_t * cond;
@@ -182,7 +197,7 @@ TEST_F(YukiTableTest, DeleteOne) {
     yvar_cstr(cond_key1, "uid");
     yvar_cstr(cond_value1, "1234567890");
 
-    yvar_t raw_cond[][2] = {
+    yvar_map_kv_t raw_cond = {
         {cond_key1, cond_value1},
     };
     yvar_t * cond;
