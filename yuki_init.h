@@ -17,7 +17,6 @@ extern "C" {
         {#c, &_##c##_init, &_##c##_clean_up, &_##c##_shutdown},
 
 #define YUKI_COMPONENT_END() \
-        {0}, \
     };
 
 typedef ybool_t (*yuki_init_callback)();
@@ -34,7 +33,7 @@ typedef struct _yuki_component_t {
 /**
  * init necessary global variables/component.
  */
-ybool_t yuki_init(const char * config_file);
+ybool_t yuki_init();
 
 /**
  * clean up thread data.

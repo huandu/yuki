@@ -1121,6 +1121,33 @@ ybool_t _yvar_like_int(const yvar_t * yvar)
     return yvar? (yvar->type >= YVAR_TYPE_INT_MIN && yvar->type <= YVAR_TYPE_INT_MAX): yfalse;
 }
 
+ybool_t _yvar_has_option(const yvar_t * yvar, yuint32_t opt)
+{
+    return yvar && (yvar->options & opt);
+}
+
+ybool_t _yvar_set_option(yvar_t * yvar, yuint32_t opt)
+{
+    if (!yvar) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    yvar->options |= opt;
+    return ytrue;
+}
+
+ybool_t _yvar_unset_option(yvar_t * yvar, yuint32_t opt)
+{
+    if (!yvar) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    yvar->options &= ~opt;
+    return ytrue;
+}
+
 /**
  * count of var. the symantic is similar to the count() in PHP.
  * only count elements in array or list.
@@ -1274,6 +1301,52 @@ ysize_t _yvar_cstr_strlen(const yvar_t * yvar)
     }
 
     return yvar->data.ycstr_data.size;
+}
+
+/**
+ * clone an array of array to a var.
+ * it's designed to help ytable to clone field or condition easily.
+ * the type of triple_array is yvar_t[size][dimension].
+ */
+ybool_t _yvar_triple_array_clone(yvar_t ** array, yvar_triple_array_t triple_array, ysize_t size, ysize_t dimension)
+{
+    if (!array || !triple_array || !*triple_array || !size || !dimension) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    yvar_t raw_array[size];
+    ysize_t index;
+
+    for (index = 0; index < size; index++) {
+        yvar_array_with_size(raw_array[index], triple_array[index], dimension);
+    }
+
+    yvar_t the_array = YVAR_ARRAY_WITH_SIZE(raw_array, size);
+    return yvar_clone(*array, the_array);
+}
+
+/**
+ * pin an array of array to a var.
+ * it's designed to help ytable to pin field or condition easily.
+ * the type of triple_array is yvar_t[size][dimension].
+ */
+ybool_t _yvar_triple_array_pin(yvar_t ** array, yvar_triple_array_t triple_array, ysize_t size, ysize_t dimension)
+{
+    if (!array || !triple_array || !*triple_array || !size || !dimension) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
+    yvar_t raw_array[size];
+    ysize_t index;
+
+    for (index = 0; index < size; index++) {
+        yvar_array_with_size(raw_array[index], triple_array[index], dimension);
+    }
+
+    yvar_t the_array = YVAR_ARRAY_WITH_SIZE(raw_array, size);
+    return yvar_pin(*array, the_array);
 }
 
 ybool_t _yvar_array_get(const yvar_t * array, size_t index, yvar_t * output)

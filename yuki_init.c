@@ -12,27 +12,43 @@ YUKI_COMPONENT_END()
 
 static ybool_t g_yuki_inited = yfalse;
 
-yuki_component_t * yuki_component_get()
+static yuki_component_t * _yuki_component_get_begin()
 {
     return g_components;
 }
 
-ybool_t yuki_init(const char * config_filename)
+static yuki_component_t * _yuki_component_get_end()
+{
+    return g_components + sizeof(g_components) / sizeof(g_components[0]);
+}
+
+static yuki_component_t * _yuki_component_get_rbegin()
+{
+    return g_components + sizeof(g_components) / sizeof(g_components[0]) - 1;
+}
+
+static yuki_component_t * _yuki_component_get_rend()
+{
+    return g_components - 1;
+}
+
+ybool_t yuki_init()
 {
     if (!g_yuki_inited) {
         YUKI_LOG_TRACE("start to init...");
+        yuki_component_t * first = _yuki_component_get_begin();
+        yuki_component_t * last = _yuki_component_get_end();
 
-        for (yuki_component_t * component = yuki_component_get();
-            component->name; component++) {
-            YUKI_LOG_TRACE("try to init %s", component->name);
+        for (; first != last; first++) {
+            YUKI_LOG_TRACE("try to init %s", first->name);
 
-            if (!component->init()) {
-                YUKI_LOG_FATAL("cannot init %s", component->name);
+            if (!first->init()) {
+                YUKI_LOG_FATAL("cannot init %s", first->name);
                 yuki_shutdown();
                 return yfalse;
             }
 
-            YUKI_LOG_TRACE("%s is init-ed", component->name);
+            YUKI_LOG_TRACE("%s is init-ed", first->name);
         }
 
         g_yuki_inited = ytrue;
@@ -44,17 +60,21 @@ ybool_t yuki_init(const char * config_filename)
 
 void yuki_clean_up()
 {
-    for (yuki_component_t * component = yuki_component_get();
-        component->name; component++) {
-        component->clean_up();
+    yuki_component_t * first = _yuki_component_get_begin();
+    yuki_component_t * last = _yuki_component_get_end();
+    
+    for (; first != last; first++) {
+        first->clean_up();
     }
 }
 
 void yuki_shutdown()
 {
-    for (yuki_component_t * component = yuki_component_get();
-        component->name; component++) {
-        component->shutdown();
+    yuki_component_t * first = _yuki_component_get_rbegin();
+    yuki_component_t * last = _yuki_component_get_rend();
+    
+    for (; first != last; first--) {
+        first->shutdown();
     }
 
     g_yuki_inited = yfalse;

@@ -4,7 +4,7 @@
 #define YUKI_INI_FILE "./test/yuki.ini"
 
 TEST(YukiVarTest, UseVar) {
-    yuki_init(YUKI_INI_FILE);
+    yuki_init();
 
     #define _GENERATE_USE_VAR_CASE(t, v) do { \
         yvar_t my_var = YVAR_EMPTY(); \
@@ -43,7 +43,7 @@ TEST(YukiVarTest, UseVar) {
 }
 
 TEST(YukiVarTest, ForeachVarArray) {
-    yuki_init(YUKI_INI_FILE);
+    yuki_init();
 
     #define _GENERATE_FOREACH_VAR_CASE(t, v) \
         yvar_t var_##t = YVAR_EMPTY(); \
@@ -112,7 +112,7 @@ TEST(YukiVarTest, VarClone) {
     yvar_int8(before_init_int8_var, 127);
     ASSERT_FALSE(yvar_clone(before_init_var, before_init_int8_var));
 
-    yuki_init(YUKI_INI_FILE);
+    yuki_init();
 
     #define _GENERATE_VAR_CLONE_CASE(t, v) do { \
         yvar_t yvar = YVAR_EMPTY(); \
@@ -241,7 +241,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
     yvar_int8(before_init_int8_var, 127);
     ASSERT_FALSE(yvar_pin(before_init_var, before_init_int8_var));
 
-    yuki_init(YUKI_INI_FILE);
+    yuki_init();
 
     #define _GENERATE_VAR_PIN_CASE(t, v) do { \
         yvar_t yvar = YVAR_EMPTY(); \
@@ -258,7 +258,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         \
         yuki_shutdown(); \
         ASSERT_FALSE(yvar_unpin(new_var)); \
-        yuki_init(YUKI_INI_FILE); \
+        yuki_init(); \
     } while (0)
 
     _GENERATE_VAR_PIN_CASE(bool, ytrue);
@@ -289,7 +289,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_equal(*new_var, yvar));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init(YUKI_INI_FILE);
+        yuki_init();
     }
 
     {
@@ -347,7 +347,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_equal(*new_var, arr1));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init(YUKI_INI_FILE);
+        yuki_init();
 
         yvar_t arr2 = YVAR_EMPTY();
         yvar_array(arr2, raw_arr2);
@@ -373,7 +373,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_equal(*new_var, map));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init(YUKI_INI_FILE);
+        yuki_init();
 
         yvar_t * new_list = NULL;
         yvar_t list = YVAR_EMPTY();
@@ -411,7 +411,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_unpin(new_list));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init(YUKI_INI_FILE);
+        yuki_init();
     }
 
     #undef _GENERATE_VAR_CLONE_CASE
@@ -421,7 +421,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
 }
 
 TEST(YukiVarTest, VarMapCloneAndPin) {
-    yuki_init(YUKI_INI_FILE);
+    yuki_init();
 
     yvar_t * new_var = NULL;
     yvar_t yvar1 = YVAR_EMPTY();
@@ -472,6 +472,64 @@ TEST(YukiVarTest, VarMapCloneAndPin) {
     ASSERT_TRUE(yvar_equal(*new_var, map));
     ASSERT_TRUE(yvar_map_smart_pin(new_var, raw_key_value));
     ASSERT_TRUE(yvar_equal(*new_var, map));
+    ASSERT_TRUE(yvar_unpin(new_var));
+
+    yuki_shutdown();
+}
+
+TEST(YukiVarTest, VarArrayOfArrayCloneAndPin) {
+    yuki_init();
+
+    yvar_t * new_var = NULL;
+    yvar_t yvar1 = YVAR_EMPTY();
+    yvar_t yvar2 = YVAR_EMPTY();
+    yvar_t yvar3 = YVAR_EMPTY();
+    yvar_t yvar4 = YVAR_EMPTY();
+    yvar_t yvar5 = YVAR_EMPTY();
+    yvar_t yvar6 = YVAR_EMPTY();
+    yvar_t yvar7 = YVAR_EMPTY();
+    yvar_t yvar8 = YVAR_EMPTY();
+    char exp_cstr1[] = "Hello world";
+    char exp_cstr2[] = "Hello world 2nd";
+    char exp_cstr3[] = "Hello world 3rd";
+    char exp_cstr4[] = "Hello world 4th";
+    char exp_cstr5[] = "Hello world 5th";
+    char exp_cstr6[] = "Hello world 6th";
+    char exp_cstr7[] = "Hello world 7th";
+    char exp_cstr8[] = "Hello world 8th";
+    yvar_cstr(yvar1, exp_cstr1);
+    yvar_cstr(yvar2, exp_cstr2);
+    yvar_cstr(yvar3, exp_cstr3);
+    yvar_cstr(yvar4, exp_cstr4);
+    yvar_cstr(yvar5, exp_cstr5);
+    yvar_cstr(yvar6, exp_cstr6);
+    yvar_cstr(yvar7, exp_cstr7);
+    yvar_cstr(yvar8, exp_cstr8);
+
+    yvar_t raw_arr1[] = {
+        yvar1, yvar2, yvar3
+    };
+    yvar_t raw_arr2[] = {
+        yvar5, yvar6, yvar7
+    };
+    yvar_triple_array_t raw_array_of_array = {
+        {yvar1, yvar2, yvar3},
+        {yvar5, yvar6, yvar7},
+    };
+    yvar_t field1 = YVAR_EMPTY();
+    yvar_array(field1, raw_arr1);
+    yvar_t field2 = YVAR_EMPTY();
+    yvar_array(field2, raw_arr2);
+    yvar_t expected_raw_array_of_array[] = {
+        field1, field2
+    };
+    yvar_t expected_array_of_array = YVAR_EMPTY();
+    yvar_array(expected_array_of_array, expected_raw_array_of_array);
+
+    ASSERT_TRUE(yvar_triple_array_smart_clone(new_var, raw_array_of_array));
+    ASSERT_TRUE(yvar_equal(*new_var, expected_array_of_array));
+    ASSERT_TRUE(yvar_triple_array_smart_pin(new_var, raw_array_of_array));
+    ASSERT_TRUE(yvar_equal(*new_var, expected_array_of_array));
     ASSERT_TRUE(yvar_unpin(new_var));
 
     yuki_shutdown();

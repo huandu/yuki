@@ -6,6 +6,8 @@
 #include "yuki.h"
 
 static pthread_key_t g_ybuffer_thread_key;
+static pthread_mutex_t g_ybuffer_global_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ybool_t g_ybuffer_global_buffer_inited = yfalse;
 static ybool_t g_ybuffer_inited = yfalse;
 static ybuffer_t * g_ybuffer_global_chain = NULL;
 
@@ -32,6 +34,11 @@ static void _ybuffer_global_clean_up()
         YUKI_LOG_DEBUG("global buffer chain is empty");
         return;
     }
+
+    // no matter sucess or not, clean up global buffer
+    pthread_mutex_lock(&g_ybuffer_global_buffer_mutex);
+    g_ybuffer_global_buffer_inited = yfalse;
+    pthread_mutex_unlock(&g_ybuffer_global_buffer_mutex);
 
     ybuffer_t * buffer = g_ybuffer_global_chain;
     ybuffer_t * next = NULL;
@@ -77,11 +84,14 @@ ybool_t _ybuffer_init()
         return ytrue;
     }
 
-    if (pthread_key_create(&g_ybuffer_thread_key, &_ybuffer_thread_clean_up)) {
-        YUKI_LOG_FATAL("cannot create thread key for ybuffer. [err: %d]", errno);
+    int error = pthread_key_create(&g_ybuffer_thread_key, &_ybuffer_thread_clean_up);
+
+    if (error) {
+        YUKI_LOG_FATAL("cannot create thread key for ybuffer. [err: %d]", error);
         return yfalse;
     }
 
+    g_ybuffer_global_buffer_inited = ytrue;
     g_ybuffer_inited = ytrue;
     return ytrue;
 }
@@ -158,6 +168,20 @@ ybuffer_t * ybuffer_create_global(ysize_t size)
     ybuffer_cookie_t * cookie = (ybuffer_cookie_t*)ptr->buffer;
     cookie->padding = YBUFFER_COOKIE_PADDING;
 
+    int ret = pthread_mutex_lock(&g_ybuffer_global_buffer_mutex);
+
+    if (ret) {
+        YUKI_LOG_FATAL("cannot wait global buffer mutex. [err: %d]", ret);
+        free(ptr);
+        return NULL;
+    }
+
+    if (!g_ybuffer_global_buffer_inited) {
+        YUKI_LOG_TRACE("cannot create global buffer as ybuffer is shutting down");
+        free(ptr);
+        return NULL;
+    }
+
     // add memory to global free list
     if (g_ybuffer_global_chain) {
         ptr->next = g_ybuffer_global_chain->next;
@@ -173,6 +197,8 @@ ybuffer_t * ybuffer_create_global(ysize_t size)
         cookie->prev = NULL;
         g_ybuffer_global_chain = ptr;
     }
+
+    pthread_mutex_unlock(&g_ybuffer_global_buffer_mutex);
 
     return ptr;
 }
@@ -231,6 +257,24 @@ ybool_t ybuffer_destroy_global(ybuffer_t * buffer)
         return yfalse;
     }
 
+    int ret = pthread_mutex_lock(&g_ybuffer_global_buffer_mutex);
+
+    if (ret) {
+        YUKI_LOG_FATAL("cannot lock global buffer mutex. [err: %d]", ret);
+        return yfalse;
+    }
+
+    if (YBUFFER_COOKIE_PADDING != cookie->padding) {
+        YUKI_LOG_DEBUG("current buffer is destroyed by other thread");
+        pthread_mutex_unlock(&g_ybuffer_global_buffer_mutex);
+        return ytrue;
+    }
+
+    if (!g_ybuffer_global_buffer_inited) {
+        YUKI_LOG_TRACE("cannot destroy buffer as ybuffer is shutting down");
+        return yfalse;
+    }
+
     ybuffer_t * prev = cookie->prev;
     ybuffer_t * next = buffer->next;
     cookie->padding = 0;
@@ -244,6 +288,8 @@ ybool_t ybuffer_destroy_global(ybuffer_t * buffer)
     } else {
         g_ybuffer_global_chain = next;
     }
+
+    pthread_mutex_unlock(&g_ybuffer_global_buffer_mutex);
 
     _ybuffer_thread_chain_add(buffer);
     return ytrue;

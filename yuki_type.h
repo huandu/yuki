@@ -150,6 +150,9 @@ typedef struct _yvar_t {
     } data;
 } yvar_t;
 
+typedef yvar_t yvar_map_kv_t[][2];
+typedef yvar_t yvar_triple_array_t[][3];
+
 typedef struct _ylist_node_t {
     struct _ylist_node_t * prev;
     struct _ylist_node_t * next;
@@ -187,6 +190,22 @@ typedef enum _ytable_verb_t {
     YTABLE_VERB_MAX,
 } ytable_verb_t;
 
+typedef enum _ytable_error_t {
+    YTABLE_ERROR_SUCCESS,
+    YTABLE_ERROR_INVALID_PARAM,
+    YTABLE_ERROR_INVALID_VERB,
+    YTABLE_ERROR_INVALID_FIELD,
+    YTABLE_ERROR_INVALID_CONDITION,
+    YTABLE_ERROR_CANNOT_CLONE_VAR,
+    YTABLE_ERROR_CANNOT_BUILD_SQL,
+    YTABLE_ERROR_CANNOT_PARSE_RESULT,
+    YTABLE_ERROR_CONFLICTED_VERB,
+    YTABLE_ERROR_CONNECTION,
+    YTABLE_ERROR_NOT_EXPECTED_RESULT,
+    YTABLE_ERROR_NOT_IMPLEMENTED,
+    YTABLE_ERROR_UNKNOWN,
+} ytable_error_t;
+
 typedef struct _ytable_t {
     yvar_t * fields;
     yvar_t * conditions;
@@ -197,6 +216,7 @@ typedef struct _ytable_t {
     ysize_t affected_rows;
     yvar_t sql;
     ytable_verb_t verb;
+    ytable_error_t last_error;
     ysize_t ytable_index; /**< index in ytable conf. */
 } ytable_t;
 
@@ -240,8 +260,6 @@ typedef struct _ytable_sql_buider_t {
     ytable_sql_builder_func builder;
     ytable_sql_result_parser_func parser;
 } ytable_sql_builder_t;
-
-typedef yvar_t yvar_map_kv_t[][2];
 
 #ifdef __cplusplus
 }

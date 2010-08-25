@@ -7,7 +7,7 @@ class YukiTableTest : public ::testing::Test {
 protected:
     virtual void SetUp()
     {
-        yuki_init(YUKI_INI_FILE);
+        yuki_init();
     }
 
     virtual void TearDown()
@@ -58,8 +58,10 @@ TEST_F(YukiTableTest, InsertOne) {
     ASSERT_TRUE(ytable);
 
     yvar_t * result;
-    ASSERT_TRUE(ytable_insert(ytable, *insert_map));
-    ASSERT_FALSE(ytable_where(ytable, *cond)); // cannot set where conf for INSERT
+    ASSERT_EQ(ytable_insert(ytable, *insert_map), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
+    ASSERT_EQ(ytable_where(ytable, *cond), ytable); // cannot set where conf for INSERT
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_INVALID_VERB);
     ASSERT_TRUE(ytable_fetch_one(ytable, result));
 
     // the result should be a bool true:
@@ -93,18 +95,23 @@ TEST_F(YukiTableTest, SelectOne) {
     yvar_t fields = YVAR_EMPTY();
     yvar_array(fields, raw_fields);
 
-    yvar_map_kv_t raw_cond = {
-        {cond_key1, cond_value1},
+    yvar_t op = YVAR_EMPTY();
+    yvar_cstr(op, "=");
+
+    yvar_triple_array_t raw_cond = {
+        {cond_key1, op, cond_value1},
     };
     yvar_t * cond;
-    ASSERT_TRUE(yvar_map_smart_clone(cond, raw_cond));
+    ASSERT_TRUE(yvar_triple_array_smart_clone(cond, raw_cond));
 
     ytable_t * ytable = ytable_instance("mytest");
     ASSERT_TRUE(ytable);
 
     yvar_t * result;
-    ASSERT_TRUE(ytable_select(ytable, fields));
-    ASSERT_TRUE(ytable_where(ytable, *cond));
+    ASSERT_EQ(ytable_select(ytable, fields), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
+    ASSERT_EQ(ytable_where(ytable, *cond), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
     ASSERT_TRUE(ytable_fetch_one(ytable, result));
 
     // the result should be an array:
@@ -152,6 +159,7 @@ TEST_F(YukiTableTest, UpdateOne) {
     yvar_t value3 = YVAR_EMPTY();
     yvar_t cond_key1 = YVAR_EMPTY();
     yvar_t cond_value1 = YVAR_EMPTY();
+    yvar_t op = YVAR_EMPTY();
     yvar_cstr(field1, "uid");
     yvar_cstr(field2, "diamond");
     yvar_cstr(field3, "cash");
@@ -160,27 +168,30 @@ TEST_F(YukiTableTest, UpdateOne) {
     yvar_int64(value3, 55555);
     yvar_cstr(cond_key1, "uid");
     yvar_cstr(cond_value1, "1234567890");
+    yvar_cstr(op, "=");
 
-    yvar_map_kv_t raw_fields = {
-        {field2, value2},
-        {field3, value3},
+    yvar_triple_array_t raw_fields = {
+        {field2, op, value2},
+        {field3, op, value3},
     };
 
-    yvar_t * update_map;
-    ASSERT_TRUE(yvar_map_smart_clone(update_map, raw_fields));
+    yvar_t * update_triple_array;
+    ASSERT_TRUE(yvar_triple_array_smart_clone(update_triple_array, raw_fields));
 
-    yvar_map_kv_t raw_cond = {
-        {cond_key1, cond_value1},
+    yvar_triple_array_t raw_cond = {
+        {cond_key1, op, cond_value1},
     };
     yvar_t * cond;
-    ASSERT_TRUE(yvar_map_smart_clone(cond, raw_cond));
+    ASSERT_TRUE(yvar_triple_array_smart_clone(cond, raw_cond));
 
     ytable_t * ytable = ytable_instance("mytest");
     ASSERT_TRUE(ytable);
 
     yvar_t * result;
-    ASSERT_TRUE(ytable_update(ytable, *update_map));
-    ASSERT_TRUE(ytable_where(ytable, *cond));
+    ASSERT_EQ(ytable_update(ytable, *update_triple_array), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
+    ASSERT_EQ(ytable_where(ytable, *cond), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
     ASSERT_TRUE(ytable_fetch_one(ytable, result));
 
     // the result should be a bool true:
@@ -194,21 +205,25 @@ TEST_F(YukiTableTest, UpdateOne) {
 TEST_F(YukiTableTest, DeleteOne) {
     yvar_t cond_key1 = YVAR_EMPTY();
     yvar_t cond_value1 = YVAR_EMPTY();
+    yvar_t op = YVAR_EMPTY();
     yvar_cstr(cond_key1, "uid");
     yvar_cstr(cond_value1, "1234567890");
+    yvar_cstr(op, "=");
 
-    yvar_map_kv_t raw_cond = {
-        {cond_key1, cond_value1},
+    yvar_triple_array_t raw_cond = {
+        {cond_key1, op, cond_value1},
     };
     yvar_t * cond;
-    ASSERT_TRUE(yvar_map_smart_clone(cond, raw_cond));
+    ASSERT_TRUE(yvar_triple_array_smart_clone(cond, raw_cond));
 
     ytable_t * ytable = ytable_instance("mytest");
     ASSERT_TRUE(ytable);
 
     yvar_t * result;
-    ASSERT_TRUE(ytable_delete(ytable));
-    ASSERT_TRUE(ytable_where(ytable, *cond));
+    ASSERT_EQ(ytable_delete(ytable), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
+    ASSERT_EQ(ytable_where(ytable, *cond), ytable);
+    ASSERT_EQ(ytable_last_error(ytable), YTABLE_ERROR_SUCCESS);
     ASSERT_TRUE(ytable_fetch_one(ytable, result));
 
     // the result should be a bool true:

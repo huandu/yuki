@@ -60,6 +60,13 @@ static inline ybool_t _ytable_inited()
     return g_ytable_inited;
 }
 
+static inline void _ytable_set_last_error(ytable_t * ytable, ytable_error_t error)
+{
+    if (ytable) {
+        ytable->last_error = error;
+    }
+}
+
 static inline ybool_t _ytable_sql_is_valid_verb(ytable_verb_t verb)
 {
     return verb > YTABLE_VERB_NULL && verb < YTABLE_VERB_MAX;
@@ -119,7 +126,7 @@ static ybool_t _ytable_sql_select_validator(const ytable_t * ytable)
     }
 
     // FIXME: condition can be YVAR_BOOL(ytrue)
-    if (!ytable->conditions || !yvar_is_map(*ytable->conditions) || !yvar_count(*ytable->conditions)) {
+    if (!ytable->conditions || !yvar_is_array(*ytable->conditions) || !yvar_count(*ytable->conditions)) {
         YUKI_LOG_DEBUG("conditions is invalid");
         return yfalse;
     }
@@ -132,13 +139,13 @@ static ybool_t _ytable_sql_update_validator(const ytable_t * ytable)
     YUKI_ASSERT(ytable);
     YUKI_ASSERT(ytable->verb == YTABLE_VERB_UPDATE);
 
-    if (!ytable->fields || !yvar_is_map(*ytable->fields) || !yvar_count(*ytable->fields)) {
+    if (!ytable->fields || !yvar_is_array(*ytable->fields) || !yvar_count(*ytable->fields)) {
         YUKI_LOG_DEBUG("fields is invalid");
         return yfalse;
     }
 
     // FIXME: condition can be YVAR_BOOL(ytrue)
-    if (!ytable->conditions || !yvar_is_map(*ytable->conditions) || !yvar_count(*ytable->conditions)) {
+    if (!ytable->conditions || !yvar_is_array(*ytable->conditions) || !yvar_count(*ytable->conditions)) {
         YUKI_LOG_DEBUG("conditions is invalid");
         return yfalse;
     }
@@ -165,7 +172,7 @@ static ybool_t _ytable_sql_delete_validator(const ytable_t * ytable)
     YUKI_ASSERT(ytable->verb == YTABLE_VERB_DELETE);
 
     // FIXME: condition can be YVAR_BOOL(ytrue)
-    if (!ytable->conditions || !yvar_is_map(*ytable->conditions) || !yvar_count(*ytable->conditions)) {
+    if (!ytable->conditions || !yvar_is_array(*ytable->conditions) || !yvar_count(*ytable->conditions)) {
         YUKI_LOG_DEBUG("conditions is invalid");
         return yfalse;
     }
@@ -180,24 +187,34 @@ static ybool_t _ytable_sql_estimate_where(const ytable_t * ytable, ysize_t * res
 
     ysize_t size = 0;
 
-    if (yvar_is_map(*ytable->conditions)) {
+    if (yvar_is_array(*ytable->conditions)) {
         size += _YTABLE_SQL_STRLEN(_YTABLE_SQL_KEYWORD_WHERE);
 
-        FOREACH_YVAR_MAP(*ytable->conditions, key, value) {
-            if (!yvar_like_string(*key)) {
-                YUKI_LOG_DEBUG("key in condition must be string");
+        FOREACH_YVAR_ARRAY(*ytable->conditions, value) {
+            if (!yvar_is_array(*value) || yvar_count(*value) != 3) {
+                YUKI_LOG_FATAL("triple array must be array and have 3 elements");
                 return yfalse;
             }
 
-            size += yvar_cstr_strlen(*key) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
+            yvar_t the_field = YVAR_EMPTY();
+            yvar_t the_op = YVAR_EMPTY();
+            yvar_t the_value = YVAR_EMPTY();
 
-            // FIXME: currently, only support op ==
-            size += _YTABLE_SQL_STRLEN(_YTABLE_SQL_OP_EQ);
+            yvar_array_get(*value, 0, the_field);
+            yvar_array_get(*value, 1, the_op);
+            yvar_array_get(*value, 2, the_value);
 
-            if (yvar_like_int(*value)) {
+            // TODO: check field and op type
+            YUKI_ASSERT(yvar_like_string(the_field));
+            YUKI_ASSERT(yvar_like_string(the_op));
+
+            size += yvar_cstr_strlen(the_field) + yvar_cstr_strlen(the_op)
+                + 2 /* for space */ + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
+
+            if (yvar_like_int(the_value)) {
                 size += _YTABLE_SQL_INT_MAXLEN + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-            } else if (yvar_like_string(*value)) {
-                size += yvar_cstr_strlen(*value) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
+            } else if (yvar_like_string(the_value)) {
+                size += yvar_cstr_strlen(the_value) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
             } else {
                 // TODO: support other types
                 YUKI_LOG_DEBUG("condition value can only be int and string");
@@ -231,28 +248,40 @@ static ybool_t _ytable_sql_do_build_where(const ytable_t * ytable, char * buffer
     YUKI_ASSERT(ytable && buffer && size && offset);
     YUKI_ASSERT(ytable->conditions);
 
-    if (yvar_is_map(*ytable->conditions)) {
+    if (yvar_is_array(*ytable->conditions)) {
         char int_buffer[_YTABLE_SQL_INT_MAXLEN + 1];
+        const char * value_buffer = NULL;
         *offset += snprintf(buffer + *offset, size - *offset, "%s", _YTABLE_SQL_KEYWORD_WHERE);
 
-        FOREACH_YVAR_MAP(*ytable->conditions, key, value) {
-            // FIXME: currently, only support AND
-            const char * value_buffer;
+        FOREACH_YVAR_ARRAY(*ytable->conditions, value) {
+            YUKI_ASSERT(yvar_is_array(*value) && yvar_count(*value) == 3);
+
+            yvar_t the_field = YVAR_EMPTY();
+            yvar_t the_op = YVAR_EMPTY();
+            yvar_t the_value = YVAR_EMPTY();
+            yvar_array_get(*value, 0, the_field);
+            yvar_array_get(*value, 1, the_op);
+            yvar_array_get(*value, 2, the_value);
+
+            // TODO: check field and op type
+            YUKI_ASSERT(yvar_like_string(the_field));
+            YUKI_ASSERT(yvar_like_string(the_op));
 
             // TODO: do real escaple on value
-            if (yvar_like_string(*value)) {
-                value_buffer = yvar_cstr_buffer(*value);
+            if (yvar_like_string(the_value)) {
+                value_buffer = yvar_cstr_buffer(the_value);
             } else {
                 // TODO: finish it
-                ybool_t ret = yvar_get_str(*value, int_buffer, sizeof(int_buffer));
+                ybool_t ret = yvar_get_str(the_value, int_buffer, sizeof(int_buffer));
                 YUKI_ASSERT(ret);
                 value_buffer = buffer;
             }
 
+            // `field` op 'value'
             *offset += snprintf(buffer + *offset, size - *offset,
-                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD " %s "
                 _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_KEYWORD_AND,
-                yvar_cstr_buffer(*key), value_buffer);
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
         }
 
         // remove tailing AND
@@ -359,7 +388,7 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
     YUKI_ASSERT(ytable);
     YUKI_ASSERT(ytable->verb == YTABLE_VERB_UPDATE);
     YUKI_ASSERT(ytable->fields && ytable->conditions);
-    YUKI_ASSERT(yvar_is_map(*ytable->fields));
+    YUKI_ASSERT(yvar_is_array(*ytable->fields));
 
     if (yvar_like_string(ytable->sql)) {
         YUKI_LOG_DEBUG("sql was built. sql: %s", yvar_cstr_buffer(ytable->sql));
@@ -377,30 +406,35 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
     size += _YTABLE_SQL_STRLEN(_YTABLE_SQL_KEYWORD_SET);
 
     // estimate buffer length for fields
-    FOREACH_YVAR_MAP(*ytable->fields, key1, value1) {
-        if (!yvar_like_string(*key1)) {
+    FOREACH_YVAR_ARRAY(*ytable->fields, value1) {
+        if (!yvar_is_array(*value1) || yvar_count(*value1) != 3) {
             YUKI_LOG_DEBUG("field key can only be str/cstr");
             return yfalse;
         }
 
-        // FIXME: field can be an array
-        if (!yvar_like_string(*value1) && !yvar_like_int(*value1)) {
-            YUKI_LOG_DEBUG("field value can only be str/cstr/int");
-            return yfalse;
-        }
+        yvar_t the_field = YVAR_EMPTY();
+        yvar_t the_op = YVAR_EMPTY();
+        yvar_t the_value = YVAR_EMPTY();
+        yvar_array_get(*value1, 0, the_field);
+        yvar_array_get(*value1, 1, the_op);
+        yvar_array_get(*value1, 2, the_value);
 
-        if (yvar_like_int(*value1)) {
+        // TODO: check field and op type
+        YUKI_ASSERT(yvar_like_string(the_field));
+        YUKI_ASSERT(yvar_like_string(the_op));
+
+        if (yvar_like_int(the_value)) {
             size += _YTABLE_SQL_INT_MAXLEN + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-        } else if (yvar_like_string(*value1)) {
-            size += yvar_cstr_strlen(*value1) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
+        } else if (yvar_like_string(the_value)) {
+            size += yvar_cstr_strlen(the_value) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
         } else {
             // TODO: support other types
             YUKI_LOG_DEBUG("condition value can only be int and string");
             return yfalse;
         }
 
-        size += yvar_cstr_strlen(*key1) + _YTABLE_SQL_STRLEN(_YTABLE_SQL_OP_EQ)
-            + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
+        size += yvar_cstr_strlen(the_field) * 2 /* may need 2 field if op is '+=' */ + yvar_cstr_strlen(the_op)
+            + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_OP_EQ) + 4 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
     }
 
     if (!_ytable_sql_estimate_where(ytable, &size)) {
@@ -427,24 +461,54 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
 
     char int_buffer[_YTABLE_SQL_INT_MAXLEN + 1];
     const char * value_buffer;
+    static yvar_t op_plus = YVAR_CSTR("+=");
+    static yvar_t op_minus = YVAR_CSTR("-=");
+    static yvar_t op_equal = YVAR_CSTR("=");
 
-    FOREACH_YVAR_MAP(*ytable->fields, key2, value2) {
+    FOREACH_YVAR_ARRAY(*ytable->fields, value2) {
         // FIXME: support more types
-        YUKI_ASSERT(yvar_like_string(*key2));
-        YUKI_ASSERT(yvar_like_string(*value2) || yvar_like_int(*value2));
+        YUKI_ASSERT(yvar_is_array(*value2) && yvar_count(*value2));
 
-        if (yvar_like_string(*value2)) {
-            value_buffer = yvar_cstr_buffer(*value2);
+        yvar_t the_field = YVAR_EMPTY();
+        yvar_t the_op = YVAR_EMPTY();
+        yvar_t the_value = YVAR_EMPTY();
+        yvar_array_get(*value2, 0, the_field);
+        yvar_array_get(*value2, 1, the_op);
+        yvar_array_get(*value2, 2, the_value);
+
+        if (yvar_like_string(the_value)) {
+            value_buffer = yvar_cstr_buffer(the_value);
         } else {
-            ybool_t ret = yvar_get_str(*value2, int_buffer, sizeof(int_buffer));
+            ybool_t ret = yvar_get_str(the_value, int_buffer, sizeof(int_buffer));
             YUKI_ASSERT(ret);
             value_buffer = int_buffer;
         }
 
-        offset += snprintf(buffer + offset, size - offset,
-            _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
-            _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
-            yvar_cstr_buffer(*key2), value_buffer);
+        if (yvar_equal(the_op, op_plus)) {
+            // `field` = `field` + 'value'
+            offset += snprintf(buffer + offset, size - offset,
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_PLUS
+                _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+        } else if (yvar_equal(the_op, op_minus)) {
+            // `field` = `field` - 'value'
+            offset += snprintf(buffer + offset, size - offset,
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_MINUS
+                _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+        } else if (yvar_equal(the_op, op_equal)) {
+            // `field` op 'value'
+            offset += snprintf(buffer + offset, size - offset,
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD "%s"
+                _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+        } else {
+            YUKI_LOG_WARNING("unsupported op in UPDATE fields. [op: %s]", yvar_cstr_buffer(the_op));
+            return yfalse;
+        }
+
     }
 
     // remove tailing comma
@@ -959,8 +1023,98 @@ static ybool_t _ytable_execute(ytable_t * ytable, ytable_connection_t * conn)
 
 static void _ytable_connection_thread_clean_up(void * thread_data)
 {
-    // TODO: implement it
-    YUKI_LOG_FATAL("not implemented");
+    if (!thread_data) {
+        YUKI_LOG_TRACE("no thread data needs to be cleaned up");
+        return;
+    }
+
+    ytable_connection_thread_data_t * data = (ytable_connection_thread_data_t*)thread_data;
+    ysize_t index;
+
+    for (index = 0; index < data->size; index++) {
+        if (data->connections[index].connected) {
+            mysql_close(&data->connections[index].mysql);
+        }
+    }
+}
+
+static ybool_t _ytable_fetch_internal(ytable_t * ytable, yvar_t ** result, yint32_t expected_rows)
+{
+    if (!ytable || !result) {
+        YUKI_LOG_FATAL("invalid param");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return yfalse;
+    }
+
+    ytable_t local_table = *ytable;
+
+    if (expected_rows >= 0) {
+        // for fetch one, only allow to get up to 2 rows
+        local_table.limit = expected_rows + 1;
+    }
+
+    if (!_ytable_build_sql(&local_table)) {
+        YUKI_LOG_WARNING("unable to build sql");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_BUILD_SQL);
+        return yfalse;
+    }
+
+    ytable_connection_t * conn = _ytable_fetch_db_connection(&local_table);
+
+    if (!conn) {
+        YUKI_LOG_FATAL("cannot fetch a valid connection");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONNECTION);
+        return yfalse;
+    }
+
+    if (!_ytable_execute(&local_table, conn)) {
+        YUKI_LOG_FATAL("fail to execute sql");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONNECTION);
+        return yfalse;
+    }
+
+    ytable_mysql_res_t * mysql_res = (ytable_mysql_res_t*)mysql_store_result(&conn->mysql);
+
+    if (NULL == mysql_res) {
+        if (mysql_field_count(&conn->mysql) == 0) {
+            local_table.affected_rows = mysql_affected_rows(&conn->mysql);
+        } else {
+            YUKI_LOG_WARNING("cannot store query result. [error: %s]", mysql_error(&conn->mysql));
+            _ytable_set_last_error(ytable, YTABLE_ERROR_CONNECTION);
+            return yfalse;
+        }
+    } else {
+        local_table.affected_rows = mysql_affected_rows(&conn->mysql);
+    }
+
+    if (expected_rows >= 0) {
+        // must be affected one row
+        if (local_table.affected_rows != (ysize_t)expected_rows) {
+            YUKI_LOG_WARNING("affected row is not %ld. [row: %lu]", expected_rows, local_table.affected_rows);
+            mysql_free_result((MYSQL_RES*)mysql_res);
+            _ytable_set_last_error(ytable, YTABLE_ERROR_NOT_EXPECTED_RESULT);
+            return yfalse;
+        }
+    }
+
+    // restore limit
+    local_table.limit = ytable->limit;
+    *ytable = local_table;
+
+    ybool_t ret = _ytable_sql_do_result_parse(ytable, mysql_res, result);
+
+    if (ret) {
+        _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    } else {
+        YUKI_LOG_WARNING("cannot parse result");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_PARSE_RESULT);
+    }
+
+    if (mysql_res) {
+        mysql_free_result((MYSQL_RES*)mysql_res);
+    }
+
+    return ret;
 }
 
 ybool_t _ytable_init()
@@ -1075,179 +1229,290 @@ ytable_t * ytable_reset(ytable_t * ytable)
     return ytable;
 }
 
-ybool_t _ytable_select(ytable_t * ytable, const yvar_t * fields)
+ytable_t * _ytable_select(ytable_t * ytable, const yvar_t * fields)
 {
     if (!ytable || !fields) {
         YUKI_LOG_FATAL("invalid param");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
     }
 
     if (!yvar_is_array(*fields)) {
         YUKI_LOG_DEBUG("fields must be array");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_FIELD);
+        return ytable; 
     }
 
     if (!_ytable_check_verb(ytable)) {
         YUKI_LOG_DEBUG("verb is set before");
-        return yfalse;
+        return ytable;
     }
 
     // TODO: validate fields
 
     ytable->verb = YTABLE_VERB_SELECT;
 
-    return yvar_clone(ytable->fields, *fields);
+    if (!yvar_clone(ytable->fields, *fields)) {
+        YUKI_LOG_FATAL("cannot clone field");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
 }
 
-ybool_t _ytable_insert(ytable_t * ytable, const yvar_t * values)
+ytable_t * _ytable_insert(ytable_t * ytable, const yvar_t * values)
 {
     if (!ytable || !values) {
         YUKI_LOG_FATAL("invalid param");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
     }
 
     if (!yvar_is_map(*values)) {
         YUKI_LOG_DEBUG("values must be map");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
     }
 
     if (!_ytable_check_verb(ytable)) {
         YUKI_LOG_DEBUG("verb is set before");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONFLICTED_VERB);
+        return ytable;
     }
 
     // TODO: validate values
 
     ytable->verb = YTABLE_VERB_INSERT;
 
-    return yvar_clone(ytable->fields, *values);
+    if (!yvar_clone(ytable->fields, *values)) {
+        YUKI_LOG_FATAL("cannot clone field");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
 }
 
-ybool_t _ytable_update(ytable_t * ytable, const yvar_t * values)
+ytable_t * _ytable_insert_using_map_kv(ytable_t * ytable, yvar_map_kv_t values, ysize_t size)
 {
     if (!ytable || !values) {
         YUKI_LOG_FATAL("invalid param");
-        return yfalse;
-    }
-
-    if (!yvar_is_map(*values)) {
-        YUKI_LOG_DEBUG("values must be map");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
     }
 
     if (!_ytable_check_verb(ytable)) {
         YUKI_LOG_DEBUG("verb is set before");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONFLICTED_VERB);
+        return ytable;
+    }
+
+    // TODO: validate values
+
+    ytable->verb = YTABLE_VERB_INSERT;
+
+    if (!yvar_map_clone(ytable->fields, values, size)) {
+        YUKI_LOG_FATAL("cannot clone value fields");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
+}
+
+
+ytable_t * _ytable_update(ytable_t * ytable, const yvar_t * values)
+{
+    if (!ytable || !values) {
+        YUKI_LOG_FATAL("invalid param");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
+    }
+
+    if (!yvar_is_array(*values)) {
+        YUKI_LOG_DEBUG("values must be map");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
+    }
+
+    if (!_ytable_check_verb(ytable)) {
+        YUKI_LOG_DEBUG("verb is set before");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONFLICTED_VERB);
+        return ytable;
     }
 
     // TODO: validate values
 
     ytable->verb = YTABLE_VERB_UPDATE;
 
-    return yvar_clone(ytable->fields, *values);
+    if (!yvar_clone(ytable->fields, *values)) {
+        YUKI_LOG_FATAL("cannot clone field");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
 }
 
-ybool_t _ytable_delete(ytable_t * ytable)
+ytable_t * _ytable_update_using_triple_array(ytable_t * ytable, yvar_triple_array_t values, ysize_t size)
 {
-    if (!ytable) {
+    if (!ytable || !values || !size) {
         YUKI_LOG_FATAL("invalid param");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
     }
 
     if (!_ytable_check_verb(ytable)) {
         YUKI_LOG_DEBUG("verb is set before");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONFLICTED_VERB);
+        return ytable;
+    }
+
+    // TODO: validate values
+
+    ytable->verb = YTABLE_VERB_UPDATE;
+
+    yvar_t fields[size];
+    ysize_t index;
+
+    for (index = 0; index < size; index++) {
+        yvar_array_with_size(fields[index], values[size], size);
+    }
+
+    yvar_t fields_var = YVAR_ARRAY_WITH_SIZE(fields, size);
+
+    if (yvar_clone(ytable->fields, fields_var)) {
+        YUKI_LOG_FATAL("cannot clone field");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
+}
+
+ytable_t * _ytable_delete(ytable_t * ytable)
+{
+    if (!ytable) {
+        YUKI_LOG_FATAL("invalid param");
+        // no need to set error
+        return ytable;
+    }
+
+    if (!_ytable_check_verb(ytable)) {
+        YUKI_LOG_DEBUG("verb is set before");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CONFLICTED_VERB);
+        return ytable;
     }
 
     ytable->verb = YTABLE_VERB_DELETE;
 
-    return ytrue;
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
 }
 
-ybool_t _ytable_where(ytable_t * ytable, const yvar_t * conditions)
+ytable_t * _ytable_where(ytable_t * ytable, const yvar_t * conditions)
 {
     if (!ytable || !conditions) {
         YUKI_LOG_FATAL("invalid param");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
     }
 
     if (!_ytable_sql_is_valid_verb(ytable->verb)) {
         YUKI_LOG_FATAL("verb must be set before using where");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_VERB);
+        return ytable;
     }
 
     if (YTABLE_VERB_INSERT == ytable->verb) {
         YUKI_LOG_DEBUG("%s verb does not support where condition",
             _ytable_sql_get_verb(ytable->verb));
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_VERB);
+        return ytable;
     }
 
     // TODO: support multiple where conditions
     if (ytable->conditions) {
         YUKI_LOG_DEBUG("only one condition can be used currently");
-        return yfalse;
+        _ytable_set_last_error(ytable, YTABLE_ERROR_NOT_IMPLEMENTED);
+        return ytable;
     }
 
     // TODO: check conditions
 
-    return yvar_clone(ytable->conditions, *conditions);
+    if (!yvar_clone(ytable->conditions, *conditions)) {
+        YUKI_LOG_FATAL("cannot clone condition");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
+}
+
+ytable_t * _ytable_where_using_triple_array(ytable_t * ytable, yvar_triple_array_t conditions, ysize_t size)
+{
+    if (!ytable || !conditions || !size) {
+        YUKI_LOG_FATAL("invalid param");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return ytable;
+    }
+
+    if (!_ytable_sql_is_valid_verb(ytable->verb)) {
+        YUKI_LOG_FATAL("verb must be set before using where");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_VERB);
+        return ytable;
+    }
+
+    if (YTABLE_VERB_INSERT == ytable->verb) {
+        YUKI_LOG_DEBUG("%s verb does not support where condition",
+            _ytable_sql_get_verb(ytable->verb));
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_VERB);
+        return ytable;
+    }
+
+    // TODO: support multiple where conditions
+    if (ytable->conditions) {
+        YUKI_LOG_DEBUG("only one condition can be used currently");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_NOT_IMPLEMENTED);
+        return ytable;
+    }
+
+    // TODO: check conditions
+
+    yvar_t raw_cond[size];
+    ysize_t index;
+
+    for (index = 0; index < size; index++) {
+        yvar_array_with_size(raw_cond[index], conditions[index], size);
+    }
+
+    yvar_t cond = YVAR_ARRAY_WITH_SIZE(raw_cond, size);
+
+    if (!yvar_clone(ytable->conditions, cond)) {
+        YUKI_LOG_FATAL("cannot clone condition");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_CLONE_VAR);
+        return ytable;
+    }
+
+    _ytable_set_last_error(ytable, YTABLE_ERROR_SUCCESS);
+    return ytable;
+}
+
+ybool_t _ytable_fetch_all(ytable_t * ytable, yvar_t ** result)
+{
+    return _ytable_fetch_internal(ytable, result, -1);
 }
 
 ybool_t _ytable_fetch_one(ytable_t * ytable, yvar_t ** result)
 {
-    if (!ytable || !result) {
-        YUKI_LOG_FATAL("invalid param");
-        return yfalse;
-    }
-
-    if (!_ytable_build_sql(ytable)) {
-        YUKI_LOG_WARNING("unable to build sql");
-        return yfalse;
-    }
-
-    ytable_connection_t * conn = _ytable_fetch_db_connection(ytable);
-
-    if (!conn) {
-        YUKI_LOG_FATAL("cannot fetch a valid connection");
-        return yfalse;
-    }
-
-    if (!_ytable_execute(ytable, conn)) {
-        YUKI_LOG_FATAL("fail to execute sql");
-        return yfalse;
-    }
-
-    ytable_mysql_res_t * mysql_res = (ytable_mysql_res_t*)mysql_store_result(&conn->mysql);
-
-    if (NULL == mysql_res) {
-        if (mysql_field_count(&conn->mysql) == 0) {
-            ytable->affected_rows = mysql_affected_rows(&conn->mysql);
-        } else {
-            YUKI_LOG_WARNING("cannot store query result. [error: %s]", mysql_error(&conn->mysql));
-            return yfalse;
-        }
-    } else {
-        ytable->affected_rows = mysql_affected_rows(&conn->mysql);
-    }
-
-    // must be affected one row
-    if (ytable->affected_rows != 1UL) {
-        YUKI_LOG_WARNING("affected row is not 1. [row: %lu]", ytable->affected_rows);
-        mysql_free_result((MYSQL_RES*)mysql_res);
-        return yfalse;
-    }
-
-    ybool_t ret = _ytable_sql_do_result_parse(ytable, mysql_res, result);
-
-    if (!ret) {
-        YUKI_LOG_WARNING("cannot parse result");
-    }
-
-    if (mysql_res) {
-        mysql_free_result((MYSQL_RES*)mysql_res);
-    }
-
-    return ret;
+    return _ytable_fetch_internal(ytable, result, 1);
 }
 
 ybool_t _ytable_fetch_insert_id(ytable_t * ytable, yvar_t * insert_id)
@@ -1255,5 +1520,14 @@ ybool_t _ytable_fetch_insert_id(ytable_t * ytable, yvar_t * insert_id)
     // TODO: implement it
     YUKI_LOG_FATAL("not implemented");
     return yfalse;
+}
+
+ytable_error_t ytable_last_error(const ytable_t * ytable)
+{
+    if (!ytable) {
+        return YTABLE_ERROR_UNKNOWN;
+    }
+
+    return ytable->last_error;
 }
 

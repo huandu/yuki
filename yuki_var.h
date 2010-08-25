@@ -149,6 +149,10 @@ extern "C" {
 #define yvar_get_cstr(yvar, output, size) _yvar_get_cstr(&(yvar), (output), (size))
 #define yvar_get_str(yvar, output, size) _yvar_get_str(&(yvar), (output), (size))
 
+#define yvar_has_option(yvar, opt) _yvar_has_option(&(yvar), (yuint32_t)(opt))
+#define yvar_set_option(yvar, opt) _yvar_set_option(&(yvar), (yuint32_t)(opt))
+#define yvar_unset_option(yvar, opt) _yvar_unset_option(&(yvar), (yuint32_t)(opt))
+
 #define yvar_count(yvar) _yvar_count(&(yvar))
 #define yvar_equal(lhs, rhs) _yvar_equal(&(lhs), &(rhs))
 #define yvar_compare(lhs, rhs) _yvar_compare(&(lhs), &(rhs))
@@ -156,6 +160,12 @@ extern "C" {
 #define yvar_str_strlen(yvar) _yvar_cstr_strlen(&(yvar))
 #define yvar_cstr_strlen(yvar) _yvar_cstr_strlen(&(yvar))
 
+#define yvar_triple_array_clone(yvar, triple_array, size, dimension) _yvar_triple_array_clone(&(yvar), (triple_array), (size), (dimension))
+#define yvar_triple_array_smart_clone(yvar, triple_array) _yvar_triple_array_clone(&(yvar), (triple_array), \
+    (sizeof(triple_array) / sizeof(triple_array[0])), (sizeof(triple_array[0]) / sizeof(triple_array[0][0])))
+#define yvar_triple_array_pin(yvar, triple_array, size, dimension) _yvar_triple_array_pin(&(yvar), (triple_array), (size), (dimension))
+#define yvar_triple_array_smart_pin(yvar, triple_array) _yvar_triple_array_pin(&(yvar), (triple_array), \
+    (sizeof(triple_array) / sizeof(triple_array[0])), (sizeof(triple_array[0]) / sizeof(triple_array[0][0])))
 #define yvar_array_get(yvar, index, output) _yvar_array_get(&(yvar), (index), &(output))
 #define yvar_array_size(yvar) _yvar_array_size(&(yvar))
 
@@ -173,10 +183,6 @@ extern "C" {
 #define yvar_unpin(yvar) _yvar_unpin((yvar))
 #define yvar_memzero(yvar) _yvar_memzero(&(yvar))
 #define yvar_unset(yvar) yvar_memzero(yvar)
-
-#define yvar_has_option(yvar, opt) ((yvar).options & (opt))
-#define yvar_set_option(yvar, opt) ((yvar).options |= (opt))
-#define yvar_unset_option(yvar, opt) ((yvar).options &= ~(opt))
 
 /** get read/write reference of internal string buffer of cstr var. */
 #define yvar_cstr_buffer(yvar) ((yvar).data.ycstr_data.str)
@@ -342,12 +348,18 @@ _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(str);
 ybool_t _yvar_like_string(const yvar_t * yvar);
 ybool_t _yvar_like_int(const yvar_t * yvar);
 
+ybool_t _yvar_has_option(const yvar_t * yvar, yuint32_t opt);
+ybool_t _yvar_set_option(yvar_t * yvar, yuint32_t opt);
+ybool_t _yvar_unset_option(yvar_t * yvar, yuint32_t opt);
+
 ysize_t _yvar_count(const yvar_t * yvar);
 ybool_t _yvar_equal(const yvar_t * plhs, const yvar_t * prhs);
 yint8_t _yvar_compare(const yvar_t * plhs, const yvar_t * prhs);
 
 ysize_t _yvar_cstr_strlen(const yvar_t * yvar);
 
+ybool_t _yvar_triple_array_clone(yvar_t ** array, yvar_triple_array_t triple_array, ysize_t size, ysize_t dimension);
+ybool_t _yvar_triple_array_pin(yvar_t ** array, yvar_triple_array_t triple_array, ysize_t size, ysize_t dimension);
 ybool_t _yvar_array_get(const yvar_t * pyvar, size_t index, yvar_t * output);
 ysize_t _yvar_array_size(const yvar_t * pyvar);
 
