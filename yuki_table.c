@@ -7,7 +7,69 @@
 #include <mysql.h>
 #include <assert.h>
 
+#include "libconfig.h"
 #include "yuki.h"
+
+#define YTABLE_CONFIG_PATH_CONNECTIONS YUKI_CONFIG_SECTION_YTABLE "/connections"
+#define YTABLE_CONFIG_PATH_TABLES YUKI_CONFIG_SECTION_YTABLE "/tables"
+
+#define YTABLE_CONFIG_MEMBER_NAME "name"
+#define YTABLE_CONFIG_MEMBER_HOST "host"
+#define YTABLE_CONFIG_MEMBER_USER "user"
+#define YTABLE_CONFIG_MEMBER_PASSWORD "password"
+#define YTABLE_CONFIG_MEMBER_DATABASE "database"
+#define YTABLE_CONFIG_MEMBER_CHARACTER_SET "character_set"
+#define YTABLE_CONFIG_MEMBER_PORT "port"
+#define YTABLE_CONFIG_MEMBER_CONNECTION "connection"
+#define YTABLE_CONFIG_MEMBER_HASH_KEY "hash_key"
+#define YTABLE_CONFIG_MEMBER_HASH_METHOD "hash_method"
+
+#define YTABLE_CONFIG_DEFAULT_PORT 3306
+
+#define _YTABLE_CONFIG_SETTING_STRING(config, path, var) do { \
+        if (CONFIG_TRUE != config_setting_lookup_string((config), (path), &(var))) { \
+            YUKI_LOG_FATAL("'%s' element must have member '%s'", \
+                YTABLE_CONFIG_PATH_CONNECTIONS, (path)); \
+            return yfalse; \
+        } \
+        YUKI_LOG_DEBUG("'%s' is set to '%s'", (path), (var)); \
+    } while (0)
+
+#define _YTABLE_CONFIG_SETTING_STRING_OPTIONAL(config, path, var, def) do { \
+        if (CONFIG_TRUE == config_setting_lookup_string((config), (path), &(var))) { \
+            YUKI_LOG_DEBUG("'%s' is set to '%s'", \
+                (path), (var)); \
+        } else { \
+            (var) = (def); \
+            YUKI_LOG_DEBUG("'%s' is set to default value '%s'", \
+                (path), (def)); \
+        } \
+    } while (0)
+
+#define _YTABLE_CONFIG_SETTING_INT_OPTIONAL(config, path, var, def) do { \
+        if (CONFIG_TRUE == config_setting_lookup_int((config), (path), &(var))) { \
+            YUKI_LOG_DEBUG("'%s' is set to '%d'", \
+                (path), (var)); \
+        } else { \
+            (var) = (def); \
+            YUKI_LOG_DEBUG("'%s' is set to default value '%d'", \
+                (path), (def)); \
+        } \
+    } while (0)
+
+#define _YTABLE_CONFIG_ESTIMATE_STRING(size, str) do { \
+        (size) += ((str)? ybuffer_round_up(strlen((str)) + 1): 0); \
+    } while (0)
+
+#define _YTABLE_CONFIG_COPY_STRING(buffer, str) do { \
+        if ((str)) { \
+            ysize_t str_len = strlen((str)) + 1; \
+            char * new_str = (char*)ybuffer_alloc((buffer), str_len); \
+            YUKI_ASSERT(new_str); \
+            snprintf(new_str, str_len, "%s", (str)); \
+            (str) = new_str; \
+        } \
+    } while (0)
 
 typedef struct _ytable_connection_t {
     MYSQL mysql;
@@ -18,9 +80,11 @@ typedef struct _ytable_mysql_res_t {
     MYSQL_RES res;
 } ytable_mysql_res_t;
 
-static ytable_config_t *g_ytable_configs = NULL;
-static ytable_db_config_t *g_ytable_db_configs = NULL;
-static yuint32_t g_ytable_db_configs_count = 0;
+static ytable_table_config_t *g_ytable_table_configs = NULL;
+static ysize_t g_ytable_table_configs_count = 0;
+
+static ytable_connection_config_t *g_ytable_connection_configs = NULL;
+static ysize_t g_ytable_connection_configs_count = 0;
 
 static ybool_t g_ytable_inited = yfalse;
 static pthread_key_t g_ytable_connection_thread_key;
@@ -55,6 +119,21 @@ static const ytable_sql_builder_t g_ytable_sql_builder[] = {
      &_ytable_sql_delete_validator, &_ytable_sql_delete_builder, &_ytable_sql_delete_result_parser},
 };
 
+static ybool_t _ytable_config_set_hash_method(ytable_table_config_t * config, const char * hash_method)
+{
+    if (hash_method) {
+        if (!strcmp(hash_method, "key_hash")) {
+            config->hash_method = YTABLE_HASH_METHOD_KEY_HASH;
+        } else {
+            return yfalse;
+        }
+    } else {
+        config->hash_method = YTABLE_HASH_METHOD_DEFAULT;
+    }
+
+    return ytrue;
+}
+
 static inline ybool_t _ytable_inited()
 {
     return g_ytable_inited;
@@ -77,6 +156,18 @@ static inline const char * _ytable_sql_get_verb(ytable_verb_t verb)
     YUKI_ASSERT(_ytable_sql_is_valid_verb(verb) || YTABLE_VERB_NULL == verb);
 
     return g_ytable_sql_builder[verb].verb;
+}
+
+static inline void _ytable_set_active_connection(ytable_t * ytable, ytable_connection_t * conn)
+{
+    YUKI_ASSERT(ytable && conn);
+    ytable->active_connection = conn;
+}
+
+static inline ytable_connection_t * _ytable_get_active_connection(const ytable_t * ytable)
+{
+    YUKI_ASSERT(ytable);
+    return ytable->active_connection;
 }
 
 static ybool_t _ytable_sql_do_validate(const ytable_t * ytable)
@@ -180,6 +271,31 @@ static ybool_t _ytable_sql_delete_validator(const ytable_t * ytable)
     return ytrue;
 }
 
+static inline ysize_t _ytable_sql_estimate_field_size(const yvar_t * field)
+{
+    YUKI_ASSERT(field);
+    YUKI_ASSERT(yvar_like_string(*field));
+
+    return yvar_cstr_strlen(*field);
+}
+
+static inline ybool_t _ytable_sql_estimate_value_size(const yvar_t * value)
+{
+    YUKI_ASSERT(value);
+
+    if (yvar_like_int(*value)) {
+        return _YTABLE_SQL_INT_MAXLEN;
+    } else if (yvar_like_string(*value)) {
+        // in the worst case, every char needs to be escaped
+        return yvar_cstr_strlen(*value) * 2;
+    } else {
+        // TODO: support other types
+        YUKI_ASSERT(yfalse);
+        YUKI_LOG_FATAL("condition value can only be int and string");
+        return 0;
+    }
+}
+
 static ybool_t _ytable_sql_estimate_where(const ytable_t * ytable, ysize_t * result)
 {
     YUKI_ASSERT(ytable && result);
@@ -208,18 +324,10 @@ static ybool_t _ytable_sql_estimate_where(const ytable_t * ytable, ysize_t * res
             YUKI_ASSERT(yvar_like_string(the_field));
             YUKI_ASSERT(yvar_like_string(the_op));
 
-            size += yvar_cstr_strlen(the_field) + yvar_cstr_strlen(the_op)
-                + 2 /* for space */ + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
-
-            if (yvar_like_int(the_value)) {
-                size += _YTABLE_SQL_INT_MAXLEN + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-            } else if (yvar_like_string(the_value)) {
-                size += yvar_cstr_strlen(the_value) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-            } else {
-                // TODO: support other types
-                YUKI_LOG_DEBUG("condition value can only be int and string");
-                return yfalse;
-            }
+            size += _ytable_sql_estimate_field_size(&the_field) + yvar_cstr_strlen(the_op)
+                + _ytable_sql_estimate_value_size(&the_value)
+                + 2 /* for space */ + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD)
+                + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
 
             // FIXME: currently, only support AND
             size += _YTABLE_SQL_STRLEN(_YTABLE_SQL_KEYWORD_AND);
@@ -234,7 +342,7 @@ static ybool_t _ytable_sql_estimate_table(const ytable_t * ytable, ysize_t * res
 {
     YUKI_ASSERT(ytable && result);
 
-    ytable_config_t * config = &g_ytable_configs[ytable->ytable_index];
+    ytable_table_config_t * config = &g_ytable_table_configs[ytable->ytable_index];
 
     // TODO: implement hash
     ysize_t size = config->name_len + 1; // 1 is for space at the end
@@ -243,15 +351,34 @@ static ybool_t _ytable_sql_estimate_table(const ytable_t * ytable, ysize_t * res
     return ytrue;
 }
 
+static const char * _ytable_sql_do_build_value(const ytable_t * ytable, const yvar_t * yvar, char * buffer, ysize_t size)
+{
+    YUKI_ASSERT(ytable && yvar && buffer && size);
+
+    // do real escaple on value
+    if (yvar_like_string(*yvar)) {
+        YUKI_ASSERT(size >= yvar_cstr_strlen(*yvar) * 2 + 1);
+        mysql_real_escape_string(&_ytable_get_active_connection(ytable)->mysql,
+            buffer, yvar_cstr_buffer(*yvar), yvar_cstr_strlen(*yvar));
+    } else {
+        ybool_t ret = yvar_get_str(*yvar, buffer, size);
+        YUKI_ASSERT(ret);
+    }
+
+    return buffer;
+}
+
 static ybool_t _ytable_sql_do_build_where(const ytable_t * ytable, char * buffer, ysize_t size, ysize_t * offset)
 {
     YUKI_ASSERT(ytable && buffer && size && offset);
     YUKI_ASSERT(ytable->conditions);
 
     if (yvar_is_array(*ytable->conditions)) {
-        char int_buffer[_YTABLE_SQL_INT_MAXLEN + 1];
-        const char * value_buffer = NULL;
         *offset += snprintf(buffer + *offset, size - *offset, "%s", _YTABLE_SQL_KEYWORD_WHERE);
+
+        // estimate value buffer, very rough but very efficient.
+        ysize_t value_size = size - *offset;
+        char value_buffer[value_size];
 
         FOREACH_YVAR_ARRAY(*ytable->conditions, value) {
             YUKI_ASSERT(yvar_is_array(*value) && yvar_count(*value) == 3);
@@ -267,21 +394,12 @@ static ybool_t _ytable_sql_do_build_where(const ytable_t * ytable, char * buffer
             YUKI_ASSERT(yvar_like_string(the_field));
             YUKI_ASSERT(yvar_like_string(the_op));
 
-            // TODO: do real escaple on value
-            if (yvar_like_string(the_value)) {
-                value_buffer = yvar_cstr_buffer(the_value);
-            } else {
-                // TODO: finish it
-                ybool_t ret = yvar_get_str(the_value, int_buffer, sizeof(int_buffer));
-                YUKI_ASSERT(ret);
-                value_buffer = buffer;
-            }
-
             // `field` op 'value'
             *offset += snprintf(buffer + *offset, size - *offset,
                 _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD " %s "
                 _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_KEYWORD_AND,
-                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op),
+                _ytable_sql_do_build_value(ytable, &the_value, value_buffer, value_size));
         }
 
         // remove tailing AND
@@ -295,12 +413,12 @@ static ybool_t _ytable_sql_do_build_table(const ytable_t * ytable, char * buffer
 {
     YUKI_ASSERT(ytable && buffer && size && offset);
 
-    ytable_config_t * config = &g_ytable_configs[ytable->ytable_index];
+    ytable_table_config_t * config = &g_ytable_table_configs[ytable->ytable_index];
 
     // TODO: implement hash
     *offset += snprintf(buffer + *offset, size - *offset,
         _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD,
-        config->table_name);
+        config->name);
 
     return ytrue;
 }
@@ -327,7 +445,7 @@ static ybool_t _ytable_sql_select_builder(ytable_t * ytable)
             return yfalse;
         }
 
-        size += yvar_cstr_strlen(*field) + _YTABLE_SQL_STRLEN(_YTABLE_SQL_COMMA);
+        size += _ytable_sql_estimate_field_size(field) + _YTABLE_SQL_STRLEN(_YTABLE_SQL_COMMA);
     }
 
     size += _YTABLE_SQL_STRLEN(_YTABLE_SQL_KEYWORD_FROM);
@@ -404,6 +522,7 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
     }
 
     size += _YTABLE_SQL_STRLEN(_YTABLE_SQL_KEYWORD_SET);
+    ysize_t old_size = size;
 
     // estimate buffer length for fields
     FOREACH_YVAR_ARRAY(*ytable->fields, value1) {
@@ -419,23 +538,14 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
         yvar_array_get(*value1, 1, the_op);
         yvar_array_get(*value1, 2, the_value);
 
-        // TODO: check field and op type
-        YUKI_ASSERT(yvar_like_string(the_field));
-        YUKI_ASSERT(yvar_like_string(the_op));
-
-        if (yvar_like_int(the_value)) {
-            size += _YTABLE_SQL_INT_MAXLEN + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-        } else if (yvar_like_string(the_value)) {
-            size += yvar_cstr_strlen(the_value) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-        } else {
-            // TODO: support other types
-            YUKI_LOG_DEBUG("condition value can only be int and string");
-            return yfalse;
-        }
-
-        size += yvar_cstr_strlen(the_field) * 2 /* may need 2 field if op is '+=' */ + yvar_cstr_strlen(the_op)
+        size += _ytable_sql_estimate_field_size(&the_field) * 2 /* may need 2 field if op is '+=' */
+            + _ytable_sql_estimate_value_size(&the_value) + _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE)
+            + yvar_cstr_strlen(the_op)
             + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_OP_EQ) + 4 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
     }
+
+    // a rough but quick estimate on max value buffer.
+    ysize_t value_size = size - old_size;
 
     if (!_ytable_sql_estimate_where(ytable, &size)) {
         YUKI_LOG_DEBUG("cannot estimate where condition size");
@@ -459,11 +569,10 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
 
     offset += snprintf(buffer + offset, size - offset, "%s", _YTABLE_SQL_KEYWORD_SET);
 
-    char int_buffer[_YTABLE_SQL_INT_MAXLEN + 1];
-    const char * value_buffer;
-    static yvar_t op_plus = YVAR_CSTR("+=");
-    static yvar_t op_minus = YVAR_CSTR("-=");
-    static yvar_t op_equal = YVAR_CSTR("=");
+    static const yvar_t op_plus = YVAR_CSTR("+=");
+    static const yvar_t op_minus = YVAR_CSTR("-=");
+    static const yvar_t op_equal = YVAR_CSTR("=");
+    char value_buffer[value_size];
 
     FOREACH_YVAR_ARRAY(*ytable->fields, value2) {
         // FIXME: support more types
@@ -476,34 +585,29 @@ static ybool_t _ytable_sql_update_builder(ytable_t * ytable)
         yvar_array_get(*value2, 1, the_op);
         yvar_array_get(*value2, 2, the_value);
 
-        if (yvar_like_string(the_value)) {
-            value_buffer = yvar_cstr_buffer(the_value);
-        } else {
-            ybool_t ret = yvar_get_str(the_value, int_buffer, sizeof(int_buffer));
-            YUKI_ASSERT(ret);
-            value_buffer = int_buffer;
-        }
-
         if (yvar_equal(the_op, op_plus)) {
             // `field` = `field` + 'value'
             offset += snprintf(buffer + offset, size - offset,
                 _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
                 _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_PLUS
                 _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
-                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_field),
+                _ytable_sql_do_build_value(ytable, &the_value, value_buffer, value_size));
         } else if (yvar_equal(the_op, op_minus)) {
             // `field` = `field` - 'value'
             offset += snprintf(buffer + offset, size - offset,
                 _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
                 _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_MINUS
                 _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
-                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_field),
+                _ytable_sql_do_build_value(ytable, &the_value, value_buffer, value_size));
         } else if (yvar_equal(the_op, op_equal)) {
             // `field` op 'value'
             offset += snprintf(buffer + offset, size - offset,
-                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD "%s"
+                _YTABLE_SQL_QUOT_FIELD "%s" _YTABLE_SQL_QUOT_FIELD _YTABLE_SQL_OP_EQ
                 _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
-                yvar_cstr_buffer(the_field), yvar_cstr_buffer(the_op), value_buffer);
+                yvar_cstr_buffer(the_field),
+                _ytable_sql_do_build_value(ytable, &the_value, value_buffer, value_size));
         } else {
             YUKI_LOG_WARNING("unsupported op in UPDATE fields. [op: %s]", yvar_cstr_buffer(the_op));
             return yfalse;
@@ -548,6 +652,7 @@ static ybool_t _ytable_sql_insert_builder(ytable_t * ytable)
 
     size += 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_BRACKET_LEFT) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_BRACKET_RIGHT)
         + _YTABLE_SQL_STRLEN(_YTABLE_SQL_KEYWORD_VALUES) + 1 /*space for a blank*/;
+    ysize_t old_size = size;
 
     // estimate buffer length for fields
     FOREACH_YVAR_MAP(*ytable->fields, key1, value1) {
@@ -561,20 +666,14 @@ static ybool_t _ytable_sql_insert_builder(ytable_t * ytable)
             return yfalse;
         }
 
-        if (yvar_like_int(*value1)) {
-            size += _YTABLE_SQL_INT_MAXLEN + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-        } else if (yvar_like_string(*value1)) {
-            size += yvar_cstr_strlen(*value1) + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE);
-        } else {
-            // TODO: support other types
-            YUKI_LOG_DEBUG("condition value can only be int and string");
-            return yfalse;
-        }
-
-        size += yvar_cstr_strlen(*key1)
+        size += _ytable_sql_estimate_field_size(key1) + _ytable_sql_estimate_value_size(value1)
             + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_COMMA)
+            + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_VALUE)
             + 2 * _YTABLE_SQL_STRLEN(_YTABLE_SQL_QUOT_FIELD);
     }
+
+    // a rough but quick estimate on max value buffer.
+    ysize_t value_size = size - old_size;
 
     char * buffer = ybuffer_simple_alloc(size);
 
@@ -608,23 +707,13 @@ static ybool_t _ytable_sql_insert_builder(ytable_t * ytable)
     offset += snprintf(buffer + offset, size - offset, "%s",
         _YTABLE_SQL_BRACKET_RIGHT _YTABLE_SQL_KEYWORD_VALUES _YTABLE_SQL_BRACKET_LEFT);
 
-    char int_buffer[_YTABLE_SQL_INT_MAXLEN + 1];
-    const char * value_buffer;
+    char value_buffer[value_size];
 
     FOREACH_YVAR_MAP(*ytable->fields, key3, value3) {
         YUKI_ASSERT(yvar_like_string(*value3) || yvar_like_int(*value3));
-
-        if (yvar_like_string(*value3)) {
-            value_buffer = yvar_cstr_buffer(*value3);
-        } else {
-            ybool_t ret = yvar_get_str(*value3, int_buffer, sizeof(int_buffer));
-            YUKI_ASSERT(ret);
-            value_buffer = int_buffer;
-        }
-
         offset += snprintf(buffer + offset, size - offset,
             _YTABLE_SQL_QUOT_VALUE "%s" _YTABLE_SQL_QUOT_VALUE _YTABLE_SQL_COMMA,
-            value_buffer);
+            _ytable_sql_do_build_value(ytable, value3, value_buffer, value_size));
     }
 
     // remove tailing comma
@@ -900,6 +989,8 @@ static ytable_connection_thread_data_t * _ytable_thread_get_connection()
     ytable_connection_thread_data_t * thread_data = pthread_getspecific(g_ytable_connection_thread_key);
 
     if (!thread_data) {
+        YUKI_LOG_TRACE("creating connection thread data...");
+
         ybuffer_t * buffer = ybuffer_create_global(sizeof(ytable_connection_thread_data_t));
 
         if (!buffer) {
@@ -914,9 +1005,9 @@ static ytable_connection_thread_data_t * _ytable_thread_get_connection()
             return NULL;
         }
 
-        thread_data->size = g_ytable_db_configs_count;
+        thread_data->size = g_ytable_connection_configs_count;
 
-        ysize_t conn_size = sizeof(ytable_connection_t) * g_ytable_db_configs_count;
+        ysize_t conn_size = sizeof(ytable_connection_t) * g_ytable_connection_configs_count;
         buffer = ybuffer_create_global(conn_size);
 
         if (!buffer) {
@@ -963,18 +1054,18 @@ static ytable_connection_t * _ytable_fetch_db_connection(ytable_t * ytable)
     }
 
     // FIXME: validate ytable index
-    ytable_config_t * config = g_ytable_configs + ytable->ytable_index;
-    yuint32_t db_index;
+    ytable_table_config_t * config = g_ytable_table_configs + ytable->ytable_index;
+    yuint32_t connection_index;
 
     // FIXME: support array
-    if (!yvar_get_uint32(*config->db_index, db_index)) {
-        YUKI_LOG_WARNING("invalid db_index");
+    if (!yvar_get_uint32(*config->connection_index, connection_index)) {
+        YUKI_LOG_WARNING("invalid connection_index");
         return NULL;
     }
 
-    YUKI_ASSERT(db_index < thread_data->size);
+    YUKI_ASSERT(connection_index < thread_data->size);
 
-    ytable_connection_t * conn = thread_data->connections + db_index;
+    ytable_connection_t * conn = thread_data->connections + connection_index;
 
     if (conn->connected) {
         if (mysql_ping(&conn->mysql)) {
@@ -991,18 +1082,25 @@ static ytable_connection_t * _ytable_fetch_db_connection(ytable_t * ytable)
     }
 
     if (!conn->connected) {
-        ytable_db_config_t * db_config = g_ytable_db_configs + db_index;
+        ytable_connection_config_t * conn_config = g_ytable_connection_configs + connection_index;
 
-        if (db_config->character_set) {
-            mysql_options(&conn->mysql, MYSQL_SET_CHARSET_NAME, db_config->character_set);
-            YUKI_LOG_TRACE("character set is set to '%s'", db_config->character_set);
-        }
-
-        if (!mysql_real_connect(&conn->mysql, db_config->host, db_config->user, db_config->password, db_config->database, db_config->port, NULL, 0)) {
+        if (!mysql_real_connect(&conn->mysql, conn_config->host, conn_config->user, conn_config->password, conn_config->database, conn_config->port, NULL, 0)) {
             YUKI_LOG_FATAL("cannot connect to mysql. [err: %s] [host: %s] [user: %s] [database: %s] [port: %lu]", mysql_error(&conn->mysql),
-                db_config->host, db_config->user, db_config->database, db_config->port);
+                conn_config->host, conn_config->user, conn_config->database, conn_config->port);
             return NULL;
         }
+
+        if (conn_config->character_set) {
+            if (mysql_set_character_set(&conn->mysql, conn_config->character_set)) {
+                YUKI_LOG_FATAL("cannot set character set. [err: %s]", mysql_error(&conn->mysql));
+                mysql_close(&conn->mysql);
+                return NULL;
+            }
+
+            YUKI_LOG_TRACE("character set is set to '%s'", conn_config->character_set);
+        }
+
+        conn->connected = ytrue;
     }
 
     YUKI_LOG_TRACE("mysql connection is ready. [thread_id: %lu]", mysql_thread_id(&conn->mysql));
@@ -1053,17 +1151,19 @@ static ybool_t _ytable_fetch_internal(ytable_t * ytable, yvar_t ** result, yint3
         local_table.limit = expected_rows + 1;
     }
 
-    if (!_ytable_build_sql(&local_table)) {
-        YUKI_LOG_WARNING("unable to build sql");
-        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_BUILD_SQL);
-        return yfalse;
-    }
-
     ytable_connection_t * conn = _ytable_fetch_db_connection(&local_table);
 
     if (!conn) {
         YUKI_LOG_FATAL("cannot fetch a valid connection");
         _ytable_set_last_error(ytable, YTABLE_ERROR_CONNECTION);
+        return yfalse;
+    }
+
+    _ytable_set_active_connection(&local_table, conn);
+
+    if (!_ytable_build_sql(&local_table)) {
+        YUKI_LOG_WARNING("unable to build sql");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_BUILD_SQL);
         return yfalse;
     }
 
@@ -1075,7 +1175,7 @@ static ybool_t _ytable_fetch_internal(ytable_t * ytable, yvar_t ** result, yint3
 
     ytable_mysql_res_t * mysql_res = (ytable_mysql_res_t*)mysql_store_result(&conn->mysql);
 
-    if (NULL == mysql_res) {
+    if (!mysql_res) {
         if (mysql_field_count(&conn->mysql) == 0) {
             local_table.affected_rows = mysql_affected_rows(&conn->mysql);
         } else {
@@ -1117,42 +1217,229 @@ static ybool_t _ytable_fetch_internal(ytable_t * ytable, yvar_t ** result, yint3
     return ret;
 }
 
-ybool_t _ytable_init()
+static ybool_t _ytable_init_connection(config_t * config)
+{
+    YUKI_ASSERT(config);
+
+    config_setting_t * setting = config_lookup(config, YTABLE_CONFIG_PATH_CONNECTIONS);
+
+    if (!setting) {
+        YUKI_LOG_FATAL("cannot get '%s' in config file", YTABLE_CONFIG_PATH_CONNECTIONS);
+        return yfalse;
+    }
+
+    YUKI_LOG_DEBUG("reading %s", YTABLE_CONFIG_PATH_CONNECTIONS);
+
+    if (CONFIG_TYPE_LIST != config_setting_type(setting)) {
+        YUKI_LOG_FATAL("'%s' must be a list in config", YTABLE_CONFIG_PATH_CONNECTIONS);
+        return yfalse;
+    }
+
+    ysize_t length = config_setting_length(setting);
+
+    if (!length) {
+        YUKI_LOG_FATAL("'%s' must have at least 1 element", YTABLE_CONFIG_PATH_CONNECTIONS);
+        return yfalse;
+    }
+
+    ybuffer_t * buffer = ybuffer_create_global(sizeof(ytable_connection_config_t) * length);
+
+    if (!buffer) {
+        YUKI_LOG_FATAL("cannot create global buffer for connection configs");
+        return yfalse;
+    }
+
+    g_ytable_connection_configs = ybuffer_alloc(buffer, sizeof(ytable_connection_config_t) * length);
+    memset(g_ytable_connection_configs, 0, sizeof(ytable_connection_config_t) * length);
+    g_ytable_connection_configs_count = length;
+
+    if (!g_ytable_connection_configs) {
+        YUKI_LOG_FATAL("cannot allocate memory for connection configs");
+        return yfalse;
+    }
+
+    ysize_t index;
+    for (index = 0; index < length; index++) {
+        ytable_connection_config_t * cur = g_ytable_connection_configs + index;
+        config_setting_t * conn = config_setting_get_elem(setting, index);
+        YUKI_ASSERT(conn);
+
+        if (CONFIG_TYPE_GROUP != config_setting_type(conn)) {
+            YUKI_LOG_FATAL("'%s' element must be groups", YTABLE_CONFIG_PATH_CONNECTIONS);
+            return yfalse;
+        }
+
+        _YTABLE_CONFIG_SETTING_STRING(conn, YTABLE_CONFIG_MEMBER_NAME, cur->name);
+        _YTABLE_CONFIG_SETTING_STRING(conn, YTABLE_CONFIG_MEMBER_HOST, cur->host);
+        _YTABLE_CONFIG_SETTING_STRING(conn, YTABLE_CONFIG_MEMBER_USER, cur->user);
+        _YTABLE_CONFIG_SETTING_STRING(conn, YTABLE_CONFIG_MEMBER_PASSWORD, cur->password);
+        _YTABLE_CONFIG_SETTING_STRING_OPTIONAL(conn, YTABLE_CONFIG_MEMBER_DATABASE, cur->database, NULL);
+        _YTABLE_CONFIG_SETTING_STRING_OPTIONAL(conn, YTABLE_CONFIG_MEMBER_CHARACTER_SET, cur->character_set, NULL);
+        _YTABLE_CONFIG_SETTING_INT_OPTIONAL(conn, YTABLE_CONFIG_MEMBER_PORT, cur->port, YTABLE_CONFIG_DEFAULT_PORT);
+    }
+
+    // estimate how many strings need to be copied
+    ysize_t size = 0;
+
+    for (index = 0; index < length; index++) {
+        ytable_connection_config_t * cur = g_ytable_connection_configs + index;
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->name);
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->host);
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->user);
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->password);
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->database);
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->character_set);
+    }
+
+    ybuffer_t * string_buffer = ybuffer_create_global(size);
+
+    if (!string_buffer) {
+        YUKI_LOG_FATAL("cannot create global buffer for connection strings");
+        return yfalse;
+    }
+
+    for (index = 0; index < length; index++) {
+        ytable_connection_config_t * cur = g_ytable_connection_configs + index;
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->name);
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->host);
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->user);
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->password);
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->database);
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->character_set);
+    }
+
+    return ytrue;
+}
+
+static ybool_t _ytable_init_table(config_t * config)
+{
+    YUKI_ASSERT(config);
+
+    config_setting_t * setting = config_lookup(config, YTABLE_CONFIG_PATH_TABLES);
+
+    if (!setting) {
+        YUKI_LOG_FATAL("cannot get '%s' in config file", YTABLE_CONFIG_PATH_TABLES);
+        return yfalse;
+    }
+
+    YUKI_LOG_DEBUG("reading %s", YTABLE_CONFIG_PATH_TABLES);
+
+    if (CONFIG_TYPE_LIST != config_setting_type(setting)) {
+        YUKI_LOG_FATAL("'%s' must be a list in config", YTABLE_CONFIG_PATH_TABLES);
+        return yfalse;
+    }
+
+    ysize_t length = config_setting_length(setting);
+
+    if (!length) {
+        YUKI_LOG_FATAL("'%s' must have at least 1 element", YTABLE_CONFIG_PATH_TABLES);
+        return yfalse;
+    }
+
+    ybuffer_t * buffer = ybuffer_create_global(sizeof(ytable_table_config_t) * length);
+
+    if (!buffer) {
+        YUKI_LOG_FATAL("cannot create global buffer for table configs");
+        return yfalse;
+    }
+
+    g_ytable_table_configs = ybuffer_alloc(buffer, sizeof(ytable_table_config_t) * length);
+    memset(g_ytable_table_configs, 0, sizeof(ytable_table_config_t) * length);
+    g_ytable_table_configs_count = length;
+
+    if (!g_ytable_table_configs) {
+        YUKI_LOG_FATAL("cannot allocate memory for table configs");
+        return yfalse;
+    }
+
+    ysize_t index;
+    for (index = 0; index < length; index++) {
+        ytable_table_config_t * cur = g_ytable_table_configs + index;
+        config_setting_t * conn = config_setting_get_elem(setting, index);
+        YUKI_ASSERT(conn);
+
+        if (CONFIG_TYPE_GROUP != config_setting_type(conn)) {
+            YUKI_LOG_FATAL("'%s' element must be groups", YTABLE_CONFIG_PATH_TABLES);
+            return yfalse;
+        }
+
+        const char * connection;
+        const char * hash_method;
+
+        _YTABLE_CONFIG_SETTING_STRING(conn, YTABLE_CONFIG_MEMBER_NAME, cur->name);
+        _YTABLE_CONFIG_SETTING_STRING(conn, YTABLE_CONFIG_MEMBER_CONNECTION, connection);
+        _YTABLE_CONFIG_SETTING_STRING_OPTIONAL(conn, YTABLE_CONFIG_MEMBER_HASH_KEY, cur->hash_key, NULL);
+        _YTABLE_CONFIG_SETTING_STRING_OPTIONAL(conn, YTABLE_CONFIG_MEMBER_HASH_METHOD, hash_method, NULL);
+
+        if (!_ytable_config_set_hash_method(cur, hash_method)) {
+            YUKI_LOG_FATAL("unknown hash_method %s", hash_method);
+            return yfalse;
+        }
+
+        cur->name_len = strlen(cur->name);
+
+        ysize_t pos;
+        for (pos = 0; pos < g_ytable_connection_configs_count; pos++) {
+            if (!strcmp(connection, g_ytable_connection_configs[pos].name)) {
+                yvar_t conn_index = YVAR_UINT64(pos);
+                yvar_pin(cur->connection_index, conn_index);
+                break;
+            }
+        }
+
+        if (pos == g_ytable_connection_configs_count) {
+            YUKI_LOG_FATAL("unknown connection '%s' in table '%s'",
+                connection, cur->name);
+            return yfalse;
+        }
+    }
+
+    // estimate how many strings need to be copied
+    ysize_t size = 0;
+
+    for (index = 0; index < length; index++) {
+        ytable_table_config_t * cur = g_ytable_table_configs + index;
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->name);
+        _YTABLE_CONFIG_ESTIMATE_STRING(size, cur->hash_key);
+    }
+
+    ybuffer_t * string_buffer = ybuffer_create_global(size);
+
+    if (!string_buffer) {
+        YUKI_LOG_FATAL("cannot create global buffer for table strings");
+        return yfalse;
+    }
+
+    for (index = 0; index < length; index++) {
+        ytable_table_config_t * cur = g_ytable_table_configs + index;
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->name);
+        _YTABLE_CONFIG_COPY_STRING(string_buffer, cur->hash_key);
+    }
+
+    return ytrue;
+}
+
+ybool_t _ytable_init(config_t * config)
 {
     if (_ytable_inited()) {
         YUKI_LOG_DEBUG("ytable is inited");
         return ytrue;
     }
 
+    YUKI_ASSERT(config);
+
     yvar_set_option(g_ytable_result_true, YVAR_OPTION_READONLY);
     yvar_set_option(g_ytable_result_false, YVAR_OPTION_READONLY);
 
-    // TODO: remove test code
-    yvar_t db_index = YVAR_UINT32(0);
+    if (!_ytable_init_connection(config)) {
+        YUKI_LOG_FATAL("cannot init connection config for ytable");
+        return yfalse;
+    }
 
-    g_ytable_configs = ybuffer_simple_alloc(sizeof(ytable_config_t) * 3);
-    memset(g_ytable_configs, 0, sizeof(ytable_config_t) * 3);
-    g_ytable_configs[0].table_name = "mytest";
-    g_ytable_configs[0].name_len = _YTABLE_SQL_STRLEN("mytest");
-    g_ytable_configs[0].hash_key = "uid";
-    yvar_pin(g_ytable_configs[0].db_index, db_index);
-
-    g_ytable_configs[1].hash_method = YTABLE_HASH_METHOD_DEFAULT;
-    g_ytable_configs[1].table_name = "mysample";
-    g_ytable_configs[1].name_len = _YTABLE_SQL_STRLEN("mysample");
-    g_ytable_configs[1].hash_key = "id";
-    yvar_pin(g_ytable_configs[1].db_index, db_index);
-    g_ytable_configs[1].hash_method = YTABLE_HASH_METHOD_DEFAULT;
-
-    g_ytable_db_configs = ybuffer_simple_alloc(sizeof(ytable_db_config_t));
-    g_ytable_db_configs[0].db_name = "162";
-    g_ytable_db_configs[0].host = "127.0.0.1";
-    g_ytable_db_configs[0].user = "test";
-    g_ytable_db_configs[0].password = "test";
-    g_ytable_db_configs[0].database = "test";
-    g_ytable_db_configs[0].character_set = "utf8";
-    g_ytable_db_configs[0].port = 3306;
-    g_ytable_db_configs_count = 1;
+    if (!_ytable_init_table(config)) {
+        YUKI_LOG_FATAL("cannot init table config for ytable");
+        return yfalse;
+    }
 
     // init thread key
     if (pthread_key_create(&g_ytable_connection_thread_key, &_ytable_connection_thread_clean_up)) {
@@ -1173,7 +1460,10 @@ void _ytable_shutdown()
 {
     // FIXME: once ytable is shut down, it cannot be turned on with different config.
     // FIXME: thread data cannot be updated automatically after init ytable again.
-    g_ytable_configs = NULL;
+    g_ytable_table_configs = NULL;
+    g_ytable_table_configs_count = 0;
+    g_ytable_connection_configs = NULL;
+    g_ytable_connection_configs_count = 0;
     g_ytable_inited = yfalse;
 }
 
@@ -1190,8 +1480,8 @@ ytable_t * ytable_instance(const char * table_name)
     }
 
     ysize_t index;
-    for (index = 0; g_ytable_configs[index].table_name; index++) {
-        if (!strcmp(table_name, g_ytable_configs[index].table_name)) {
+    for (index = 0; index < g_ytable_table_configs_count; index++) {
+        if (!strcmp(table_name, g_ytable_table_configs[index].name)) {
             YUKI_LOG_DEBUG("table is found. [name: %s] [index: %lu]", table_name, index);
 
             ybuffer_t * buffer = ybuffer_create_global(sizeof(ytable_t));
@@ -1214,6 +1504,7 @@ ytable_t * ytable_instance(const char * table_name)
         }
     }
 
+    YUKI_LOG_WARNING("cannot find table '%s'", table_name);
     return NULL;
 }
 
@@ -1517,9 +1808,37 @@ ybool_t _ytable_fetch_one(ytable_t * ytable, yvar_t ** result)
 
 ybool_t _ytable_fetch_insert_id(ytable_t * ytable, yvar_t * insert_id)
 {
-    // TODO: implement it
-    YUKI_LOG_FATAL("not implemented");
-    return yfalse;
+    if (!ytable || !insert_id) {
+        YUKI_LOG_FATAL("invalid param");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_PARAM);
+        return yfalse;
+    }
+
+    ytable_connection_t * conn = _ytable_get_active_connection(ytable);
+
+    if (!conn) {
+        YUKI_LOG_WARNING("fetch insert id before fetch result");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_FETCH_INSERT_ID);
+        return yfalse;
+    }
+
+    if (YTABLE_VERB_INSERT != ytable->verb) {
+        YUKI_LOG_WARNING("don't try to fetch insert id on verb other than INSERT");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_VERB);
+        return yfalse;
+    }
+
+    yuint64_t value = mysql_insert_id(&conn->mysql);
+
+    if (!value) {
+        YUKI_LOG_WARNING("cannot fetch insert id");
+        _ytable_set_last_error(ytable, YTABLE_ERROR_CANNOT_FETCH_INSERT_ID);
+        return yfalse;
+    }
+
+    YUKI_LOG_DEBUG("fetched insert id: %lu", value);
+    yvar_uint64(*insert_id, value);
+    return ytrue;
 }
 
 ytable_error_t ytable_last_error(const ytable_t * ytable)

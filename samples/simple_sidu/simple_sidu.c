@@ -7,15 +7,10 @@
 
 int main(int argc, char * argv[])
 {
-    if (argc != 2) {
-        YUKI_LOG_TRACE("ERROR: must have 1 param which is the yuki.ini path");
-        return -1;
-    }
+    yuki_init("./sample.config");
+    atexit(&yuki_shutdown);
 
     YUKI_LOG_TRACE("please make sure to import sample.sql to your database 'test' before using this sample");
-
-    yuki_init(argv[1]);
-    atexit(&yuki_shutdown);
 
     ///////////////////////////////////////////////////////////////////
     YUKI_LOG_TRACE("start to do insert...");
@@ -45,6 +40,12 @@ int main(int argc, char * argv[])
         return -2;
     }
 
+    yvar_t insert_id = YVAR_EMPTY();
+    ytable_fetch_insert_id(ytable, insert_id);
+    yint64_t insert_id_value;
+    yvar_get_int64(insert_id, insert_id_value);
+    YUKI_LOG_TRACE("got insert id %ld", insert_id_value);
+
     ///////////////////////////////////////////////////////////////////
     YUKI_LOG_TRACE("start to do select...");
 
@@ -53,11 +54,11 @@ int main(int argc, char * argv[])
     };
     yvar_t select_fields = YVAR_ARRAY(select_raw_fields);
 
-    yvar_map_kv_t select_raw_cond = {
-        {YVAR_CSTR("uid"), YVAR_CSTR("huandu")},
+    yvar_triple_array_t select_raw_cond = {
+        {YVAR_CSTR("uid"), YVAR_CSTR("="), YVAR_CSTR("huandu")},
     };
     yvar_t * select_cond = NULL;
-    yvar_map_smart_clone(select_cond, select_raw_cond);
+    yvar_triple_array_smart_clone(select_cond, select_raw_cond);
 
     ytable = ytable_reset(ytable);
     ytable_select(ytable, select_fields);
@@ -83,12 +84,12 @@ int main(int argc, char * argv[])
     ///////////////////////////////////////////////////////////////////
     YUKI_LOG_TRACE("start to do update...");
 
-    yvar_map_kv_t update_raw_fields = {
-        {YVAR_CSTR("int_value"), YVAR_INT32(54321)},
-        {YVAR_CSTR("text_value"), YVAR_INT32(4567788)}, // yes, yuki will convert number to string automatically!
+    yvar_triple_array_t update_raw_fields = {
+        {YVAR_CSTR("int_value"), YVAR_CSTR("+="), YVAR_INT32(54321)},
+        {YVAR_CSTR("text_value"), YVAR_CSTR("="), YVAR_INT32(4567788)}, // yes, yuki will convert number to string automatically!
     };
     yvar_t * update_fields;
-    yvar_map_smart_clone(update_fields, update_raw_fields);
+    yvar_triple_array_smart_clone(update_fields, update_raw_fields);
 
     ytable = ytable_reset(ytable);
     ytable_update(ytable, *update_fields);

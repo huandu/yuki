@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <assert.h>
 
+#include "libconfig.h"
 #include "yuki.h"
 
 static pthread_key_t g_ybuffer_thread_key;
@@ -78,8 +79,10 @@ static void _ybuffer_thread_chain_add(ybuffer_t * buffer)
     }
 }
 
-ybool_t _ybuffer_init()
+ybool_t _ybuffer_init(config_t * config)
 {
+    (void)config;
+
     if (ybuffer_inited()) {
         return ytrue;
     }

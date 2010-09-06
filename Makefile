@@ -7,14 +7,19 @@ AR = ar
 PROJECT_NAME = yuki
 LIB = lib$(PROJECT_NAME).a
 
-OBJS  = $(patsubst %.c,%.o,$(wildcard *.c))
-LIBS = -L/usr/local/webserver/mysql/lib/mysql/ -lmysqlclient_r -lpthread -lz
-INCS = -I/usr/local/webserver/mysql/include/mysql/ 
+OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
+LIBS = \
+    -L/usr/local/webserver/mysql/lib/mysql/ -lmysqlclient_r \
+    -L../libconfig/lib -lconfig \
+    -lpthread -lz
+INCS = \
+    -I/usr/local/webserver/mysql/include/mysql/ \
+    -I../libconfig/include
 DFLAGS =
 CFLAGS = $(INCS) -std=c99 -Wall -Werror -g
 RM = rm -f
 
-.PHONY: all lib test clean debug
+.PHONY: all lib test clean debug samples
 
 all : lib
 
@@ -22,8 +27,7 @@ debug : DFLAGS += -DDEBUG
 debug : lib
 
 test : lib
-	cd test/ && make -f Makefile
-	cd ..
+	cd test/ && make && cd ..
 
 lib : $(OBJS) $(LIB)
 
@@ -40,4 +44,8 @@ $(LIB) :
 clean :
 	${RM} $(OBJS) $(LIB)
 	${RM}r output/
-	cd test/ && make -f Makefile clean
+	cd test/ && make clean && cd ..
+	cd samples/ && make clean && cd ..
+
+samples :
+	cd samples/ && make && cd ..

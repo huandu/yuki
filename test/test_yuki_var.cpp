@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 #include "yuki.h"
 
-#define YUKI_INI_FILE "./test/yuki.ini"
+#define YUKI_CFG_FILE "./test/yuki.config"
 
 TEST(YukiVarTest, UseVar) {
-    yuki_init();
+    yuki_init(YUKI_CFG_FILE);
 
     #define _GENERATE_USE_VAR_CASE(t, v) do { \
         yvar_t my_var = YVAR_EMPTY(); \
@@ -43,7 +43,7 @@ TEST(YukiVarTest, UseVar) {
 }
 
 TEST(YukiVarTest, ForeachVarArray) {
-    yuki_init();
+    yuki_init(YUKI_CFG_FILE);
 
     #define _GENERATE_FOREACH_VAR_CASE(t, v) \
         yvar_t var_##t = YVAR_EMPTY(); \
@@ -112,7 +112,7 @@ TEST(YukiVarTest, VarClone) {
     yvar_int8(before_init_int8_var, 127);
     ASSERT_FALSE(yvar_clone(before_init_var, before_init_int8_var));
 
-    yuki_init();
+    yuki_init(YUKI_CFG_FILE);
 
     #define _GENERATE_VAR_CLONE_CASE(t, v) do { \
         yvar_t yvar = YVAR_EMPTY(); \
@@ -241,7 +241,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
     yvar_int8(before_init_int8_var, 127);
     ASSERT_FALSE(yvar_pin(before_init_var, before_init_int8_var));
 
-    yuki_init();
+    yuki_init(YUKI_CFG_FILE);
 
     #define _GENERATE_VAR_PIN_CASE(t, v) do { \
         yvar_t yvar = YVAR_EMPTY(); \
@@ -258,7 +258,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         \
         yuki_shutdown(); \
         ASSERT_FALSE(yvar_unpin(new_var)); \
-        yuki_init(); \
+        yuki_init(YUKI_CFG_FILE); \
     } while (0)
 
     _GENERATE_VAR_PIN_CASE(bool, ytrue);
@@ -289,7 +289,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_equal(*new_var, yvar));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init();
+        yuki_init(YUKI_CFG_FILE);
     }
 
     {
@@ -347,7 +347,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_equal(*new_var, arr1));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init();
+        yuki_init(YUKI_CFG_FILE);
 
         yvar_t arr2 = YVAR_EMPTY();
         yvar_array(arr2, raw_arr2);
@@ -373,7 +373,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_equal(*new_var, map));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init();
+        yuki_init(YUKI_CFG_FILE);
 
         yvar_t * new_list = NULL;
         yvar_t list = YVAR_EMPTY();
@@ -411,7 +411,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
         ASSERT_TRUE(yvar_unpin(new_list));
         yuki_shutdown();
         ASSERT_FALSE(yvar_unpin(new_var));
-        yuki_init();
+        yuki_init(YUKI_CFG_FILE);
     }
 
     #undef _GENERATE_VAR_CLONE_CASE
@@ -421,7 +421,7 @@ TEST(YukiVarTest, VarPinAndUnpin) {
 }
 
 TEST(YukiVarTest, VarMapCloneAndPin) {
-    yuki_init();
+    yuki_init(YUKI_CFG_FILE);
 
     yvar_t * new_var = NULL;
     yvar_t yvar1 = YVAR_EMPTY();
@@ -478,7 +478,7 @@ TEST(YukiVarTest, VarMapCloneAndPin) {
 }
 
 TEST(YukiVarTest, VarArrayOfArrayCloneAndPin) {
-    yuki_init();
+    yuki_init(YUKI_CFG_FILE);
 
     yvar_t * new_var = NULL;
     yvar_t yvar1 = YVAR_EMPTY();

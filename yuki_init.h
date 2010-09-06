@@ -33,7 +33,7 @@ typedef struct _yuki_component_t {
 /**
  * init necessary global variables/component.
  */
-ybool_t yuki_init();
+ybool_t yuki_init(const char * filename);
 
 /**
  * clean up thread data.

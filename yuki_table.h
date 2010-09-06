@@ -41,6 +41,7 @@ extern "C" {
 #define ytable_delete(ytable) _ytable_delete((ytable))
 #define ytable_where(ytable, conditions) _ytable_where((ytable), &(conditions))
 #define ytable_fetch_one(ytable, result) _ytable_fetch_one((ytable), &(result))
+#define ytable_fetch_all(ytable, result) _ytable_fetch_all((ytable), &(result))
 #define ytable_fetch_insert_id(ytable, insert_id) _ytable_fetch_insert_id((ytable), &(insert_id))
 
 #define YTABLE_SELECT(ytable, ...) do { \

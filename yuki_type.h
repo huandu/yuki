@@ -202,15 +202,20 @@ typedef enum _ytable_error_t {
     YTABLE_ERROR_CONFLICTED_VERB,
     YTABLE_ERROR_CONNECTION,
     YTABLE_ERROR_NOT_EXPECTED_RESULT,
+    YTABLE_ERROR_CANNOT_FETCH_INSERT_ID,
     YTABLE_ERROR_NOT_IMPLEMENTED,
     YTABLE_ERROR_UNKNOWN,
 } ytable_error_t;
+
+// declared in yuki_table.c to avoid dependence on <mysql.h>
+struct _ytable_connection_t;
 
 typedef struct _ytable_t {
     yvar_t * fields;
     yvar_t * conditions;
     yvar_t * hash_value;
     yvar_t * order_by;
+    struct _ytable_connection_t * active_connection;
     yint32_t limit;
     yint32_t offset;
     ysize_t affected_rows;
@@ -220,32 +225,29 @@ typedef struct _ytable_t {
     ysize_t ytable_index; /**< index in ytable conf. */
 } ytable_t;
 
-// declared in yuki_table.c to avoid dependence on <mysql.h>
-struct _ytable_connection_t;
-
 typedef struct _ytable_connection_thread_data_t {
     struct _ytable_connection_t * connections;
     ysize_t size;
 } ytable_connection_thread_data_t;
 
-typedef struct _ytable_config_t {
-    const char * table_name;
+typedef struct _ytable_table_config_t {
+    const char * name;
     ysize_t name_len;
     const char * hash_key;
     yvar_t * params;
-    yvar_t * db_index;
+    yvar_t * connection_index;
     ytable_hash_method_t hash_method;
-} ytable_config_t;
+} ytable_table_config_t;
 
-typedef struct _ytable_db_config_t {
-    const char * db_name;
+typedef struct _ytable_connection_config_t {
+    const char * name;
     const char * host;
     const char * user;
     const char * password;
     const char * database;
     const char * character_set;
-    yuint32_t port;
-} ytable_db_config_t;
+    yint32_t port;
+} ytable_connection_config_t;
 
 // cheat compiler
 struct _ytable_mysql_res_t;

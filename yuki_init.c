@@ -1,11 +1,12 @@
+#include "libconfig.h"
 #include "yuki.h"
 
-YUKI_COMPONENT_DECLARE(yuki_log)
+YUKI_COMPONENT_DECLARE(ylog)
 YUKI_COMPONENT_DECLARE(ybuffer)
 YUKI_COMPONENT_DECLARE(ytable)
 
 YUKI_COMPONENT_BEGIN()
-    YUKI_COMPONENT_REGISTER(yuki_log)
+    YUKI_COMPONENT_REGISTER(ylog)
     YUKI_COMPONENT_REGISTER(ybuffer)
     YUKI_COMPONENT_REGISTER(ytable)
 YUKI_COMPONENT_END()
@@ -32,19 +33,37 @@ static yuki_component_t * _yuki_component_get_rend()
     return g_components - 1;
 }
 
-ybool_t yuki_init()
+ybool_t yuki_init(const char * filename)
 {
+    if (!filename) {
+        YUKI_LOG_FATAL("invalid param");
+        return yfalse;
+    }
+
     if (!g_yuki_inited) {
         YUKI_LOG_TRACE("start to init...");
+
+        config_t config;
+        config_init(&config);
+
+        if (CONFIG_TRUE != config_read_file(&config, filename)) {
+            YUKI_LOG_FATAL("cannot read config file. [filename: %s]", filename);
+            config_destroy(&config);
+            return yfalse;
+        }
+
+        YUKI_LOG_TRACE("reading config file '%s'...", filename);
+
         yuki_component_t * first = _yuki_component_get_begin();
         yuki_component_t * last = _yuki_component_get_end();
 
         for (; first != last; first++) {
             YUKI_LOG_TRACE("try to init %s", first->name);
 
-            if (!first->init()) {
+            if (!first->init(&config)) {
                 YUKI_LOG_FATAL("cannot init %s", first->name);
                 yuki_shutdown();
+                config_destroy(&config);
                 return yfalse;
             }
 
@@ -52,6 +71,7 @@ ybool_t yuki_init()
         }
 
         g_yuki_inited = ytrue;
+        config_destroy(&config);
         YUKI_LOG_TRACE("init completed");
     }
 
