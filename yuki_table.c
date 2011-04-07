@@ -279,7 +279,7 @@ static inline ysize_t _ytable_sql_estimate_field_size(const yvar_t * field)
     return yvar_cstr_strlen(*field);
 }
 
-static inline ybool_t _ytable_sql_estimate_value_size(const yvar_t * value)
+static inline ysize_t _ytable_sql_estimate_value_size(const yvar_t * value)
 {
     YUKI_ASSERT(value);
 
@@ -900,7 +900,7 @@ static ybool_t _ytable_sql_select_result_parser(const ytable_t * ytable, ytable_
                 case MYSQL_TYPE_NULL:
                     YUKI_LOG_DEBUG("NULL type value");
                     yvar_undefined(local_result[cnt * field_cnt + i]);
-                    
+
                     break;
                 default:
                     YUKI_LOG_WARNING("unsupported type. [type: %lu]", field_types[i]);
@@ -1071,7 +1071,7 @@ static ytable_connection_t * _ytable_fetch_db_connection(ytable_t * ytable)
         if (mysql_ping(&conn->mysql)) {
             YUKI_LOG_TRACE("mysql connection is gone.");
             mysql_close(&conn->mysql);
-            
+
             if (!mysql_init(&conn->mysql)) {
                 YUKI_LOG_FATAL("fail to init mysql struct");
                 return NULL;
@@ -1531,7 +1531,7 @@ ytable_t * _ytable_select(ytable_t * ytable, const yvar_t * fields)
     if (!yvar_is_array(*fields)) {
         YUKI_LOG_DEBUG("fields must be array");
         _ytable_set_last_error(ytable, YTABLE_ERROR_INVALID_FIELD);
-        return ytable; 
+        return ytable;
     }
 
     if (!_ytable_check_verb(ytable)) {
