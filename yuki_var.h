@@ -134,6 +134,16 @@ extern "C" {
 #define yvar_is_list(yvar)      _YVAR_IS_TYPE((yvar), YVAR_TYPE_LIST)
 #define yvar_is_map(yvar)       _YVAR_IS_TYPE((yvar), YVAR_TYPE_MAP)
 
+#define yvar_to_bool(yvar)      _yvar_to_bool(&(yvar))
+#define yvar_to_int8(yvar)      _yvar_to_int8(&(yvar))
+#define yvar_to_uint8(yvar)     _yvar_to_uint8(&(yvar))
+#define yvar_to_int16(yvar)     _yvar_to_int16(&(yvar))
+#define yvar_to_uint16(yvar)    _yvar_to_uint16(&(yvar))
+#define yvar_to_int32(yvar)     _yvar_to_int32(&(yvar))
+#define yvar_to_uint32(yvar)    _yvar_to_uint32(&(yvar))
+#define yvar_to_int64(yvar)     _yvar_to_int64(&(yvar))
+#define yvar_to_uint64(yvar)    _yvar_to_uint64(&(yvar))
+
 #define yvar_like_string(yvar)  _yvar_like_string(&(yvar))
 #define yvar_like_int(yvar)     _yvar_like_int(&(yvar))
 
@@ -332,6 +342,7 @@ extern "C" {
 
 #define _YVAR_GET_FUNCTION_DECLARE(t) ybool_t _yvar_get_##t(const yvar_t * yvar, y##t##_t * output)
 #define _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(t) ybool_t _yvar_get_##t(const yvar_t * yvar, char * output, ysize_t size)
+#define _YVAR_TO_FUNCTION_DECLARE(t) y##t##_t _yvar_to_##t(const yvar_t * yvar)
 
 _YVAR_GET_FUNCTION_DECLARE(bool);
 _YVAR_GET_FUNCTION_DECLARE(int8);
@@ -344,6 +355,16 @@ _YVAR_GET_FUNCTION_DECLARE(int64);
 _YVAR_GET_FUNCTION_DECLARE(uint64);
 _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(cstr);
 _YVAR_GET_FUNCTION_DECLARE_WITH_SIZE(str);
+
+_YVAR_TO_FUNCTION_DECLARE(bool);
+_YVAR_TO_FUNCTION_DECLARE(int8);
+_YVAR_TO_FUNCTION_DECLARE(uint8);
+_YVAR_TO_FUNCTION_DECLARE(int16);
+_YVAR_TO_FUNCTION_DECLARE(uint16);
+_YVAR_TO_FUNCTION_DECLARE(int32);
+_YVAR_TO_FUNCTION_DECLARE(uint32);
+_YVAR_TO_FUNCTION_DECLARE(int64);
+_YVAR_TO_FUNCTION_DECLARE(uint64);
 
 ybool_t _yvar_like_string(const yvar_t * yvar);
 ybool_t _yvar_like_int(const yvar_t * yvar);

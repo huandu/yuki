@@ -322,6 +322,24 @@ static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, 
     return ytrue;
 }
 
+#define _YUKI_YVAR_TO_TYPE_FUNCTION(type) \
+    y##type##_t _yvar_to_##type(const yvar_t * yvar) \
+    { \
+        y##type##_t output; \
+        _yvar_get_##type(yvar, &output); \
+        return output; \
+    }
+
+_YUKI_YVAR_TO_TYPE_FUNCTION(bool)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int8)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint8)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int16)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint16)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int32)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint32)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int64)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint64)
+
 ybool_t _yvar_get_bool(const yvar_t * yvar, ybool_t * output)
 {
     if (!yvar || !output) {
