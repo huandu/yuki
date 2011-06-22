@@ -32,7 +32,7 @@ static char         g_ylog_real_file[YLOG_MAX_PATH_LENGTH];
 
 static char         g_ylog_dir[YLOG_MAX_PATH_LENGTH];
 // TODO: implement different log files for different level
-static FILE *       g_ylog_files[YLOG_LEVEL_MAX];
+static FILE *       g_ylog_files[YLOG_LEVEL_MAX] = {NULL};
 static char         g_ylog_real_files[YLOG_LEVEL_MAX][YLOG_MAX_PATH_LENGTH];
 ysize_t             g_ylog_max_type;
 
@@ -51,15 +51,8 @@ ybool_t _ylog_init(config_t * config)
     const char * log_dir;
     const char * log_file;
 
-    if (CONFIG_TRUE != config_lookup_string(config, YLOG_CONFIG_PATH_LOG_DIR, &log_dir)) {
-        YUKI_LOG_FATAL("cannot get '%s' in config file", YLOG_CONFIG_PATH_LOG_DIR);
-        return yfalse;
-    }
-
-    if (CONFIG_TRUE != config_lookup_string(config, YLOG_CONFIG_PATH_LOG_FILE, &log_file)) {
-        YUKI_LOG_FATAL("cannot get '%s' in config file", YLOG_CONFIG_PATH_LOG_FILE);
-        return yfalse;
-    }
+    _YTABLE_CONFIG_STRING(config, YLOG_CONFIG_PATH_LOG_DIR, log_dir);
+    _YTABLE_CONFIG_STRING(config, YLOG_CONFIG_PATH_LOG_FILE, log_file);
 
     struct stat stat_buf;
 
@@ -80,16 +73,18 @@ ybool_t _ylog_init(config_t * config)
         }
     }
 
-    ysize_t ylog_path_size = strlen(log_dir) + strlen(log_file) + 1;
-    memset(g_ylog_real_file,0,YLOG_MAX_PATH_LENGTH);
-    if (ylog_path_size>YLOG_MAX_PATH_LENGTH) {
+    ysize_t ylog_dir_len = strlen(log_dir);
+    ysize_t ylog_file_len = strlen(log_file);
+    ysize_t ylog_path_size = ylog_dir_len + ylog_file_len + 1;
+    if (ylog_path_size > YLOG_MAX_PATH_LENGTH) {
         YUKI_LOG_FATAL("log dir '%s' is so long", log_dir);
         return yfalse;
     }
-    snprintf(g_ylog_real_file, ylog_path_size, "%s%s", log_dir, log_file);
+    snprintf(g_ylog_real_file, YLOG_MAX_PATH_LENGTH, "%s/%s", log_dir, log_file);
+    g_ylog_real_file[ylog_path_size] = 0;
 
-    memset(g_ylog_dir,0,YLOG_MAX_PATH_LENGTH);
-    memcpy(g_ylog_dir,log_dir,strlen(log_dir));
+    snprintf(g_ylog_dir,YLOG_MAX_PATH_LENGTH,"%s",log_dir);
+    g_ylog_dir[ylog_dir_len] = 0;
     g_ylog_file = fopen(g_ylog_real_file, "a");
     if (!g_ylog_file) {
         YUKI_LOG_FATAL("cannot open log path '%s' for write", g_ylog_real_file);
@@ -98,51 +93,36 @@ ybool_t _ylog_init(config_t * config)
 
     g_ylog_max_log_line_length = YLOG_MAX_LINE_LENGTH;
 
-    YUKI_LOG_DEBUG("%s is set to %s", YLOG_CONFIG_PATH_LOG_DIR, log_dir);
-    YUKI_LOG_DEBUG("%s is set to %s", YLOG_CONFIG_PATH_LOG_FILE, log_file);
-
-    if (CONFIG_TRUE == config_lookup_int(config, YLOG_CONFIG_PATH_MAX_LINE_LENGTH, &g_ylog_max_log_line_length)) {
-        YUKI_LOG_DEBUG("%s is set to %d", YLOG_CONFIG_PATH_MAX_LINE_LENGTH, g_ylog_max_log_line_length);
-    }
-
-    if (CONFIG_TRUE == config_lookup_int(config, YLOG_CONFIG_PATH_MAX_LEVEL, &g_ylog_max_level)) {
-        YUKI_LOG_DEBUG("%s is set to %d", YLOG_CONFIG_PATH_MAX_LEVEL, g_ylog_max_level);
-    }
+    _YTABLE_CONFIG_INT_OPTIONAL(config, YLOG_CONFIG_PATH_MAX_LINE_LENGTH, g_ylog_max_log_line_length, YLOG_MAX_LINE_LENGTH);
+    _YTABLE_CONFIG_INT_OPTIONAL(config, YLOG_CONFIG_PATH_MAX_LEVEL,       g_ylog_max_level,           YLOG_LEVEL_MAX);
 
     // read special settings for special levels
-    memset(g_ylog_files,0,sizeof(FILE *));
-    memset(g_ylog_real_files,0,YLOG_LEVEL_MAX*YLOG_MAX_PATH_LENGTH);
+    memset(g_ylog_real_files, 0, YLOG_LEVEL_MAX * YLOG_MAX_PATH_LENGTH);
     ysize_t i;
-    yint32_t index;
+    yint32_t level;
     config_setting_t* ylog_setting=config_lookup(config, YUKI_CONFIG_SECTION_YSPECIAL);
     if (ylog_setting) {
         if (CONFIG_TYPE_LIST == config_setting_type(ylog_setting)) {
-            g_ylog_max_type=config_setting_length(ylog_setting);
+            g_ylog_max_type = config_setting_length(ylog_setting);
             for (i = 0; i < g_ylog_max_type; i++) {
-                config_setting_t* ylog_set=config_setting_get_elem(ylog_setting, i);
-                if (CONFIG_TRUE != config_setting_lookup_int(ylog_set, YLOG_CONFIG_LOG_SPECIAL_LEVEL, &index)) {
-                    YUKI_LOG_FATAL("cannot get '%s' in config file", YLOG_CONFIG_LOG_SPECIAL_LEVEL);
-                    return yfalse;
-                }
-                YUKI_LOG_DEBUG("get '%s' in config file '%d' ", YLOG_CONFIG_LOG_SPECIAL_LEVEL,index);
-                if (CONFIG_TRUE != config_setting_lookup_string(ylog_set, YLOG_CONFIG_LOG_SPECIAL_FILE, &log_file)) {
-                    YUKI_LOG_FATAL("cannot get '%s' in config file", YLOG_CONFIG_LOG_SPECIAL_FILE);
-                    return yfalse;
-                }
-                YUKI_LOG_DEBUG("get '%s' in config file '%s' ", YLOG_CONFIG_LOG_SPECIAL_FILE,log_file);
-                if (index<0 || index>YLOG_LEVEL_MAX) {
-                    YUKI_LOG_FATAL("get log level '%d' out of range", index);
+                config_setting_t* ylog_set = config_setting_get_elem(ylog_setting, i);
+
+                _YTABLE_CONFIG_SETTING_INT(ylog_set, YLOG_CONFIG_LOG_SPECIAL_LEVEL, level);
+                _YTABLE_CONFIG_SETTING_STRING(ylog_set, YLOG_CONFIG_LOG_SPECIAL_FILE, log_file);
+
+                if (level < 0 || level > YLOG_LEVEL_MAX) {
+                    YUKI_LOG_FATAL("get log level '%d' out of range", level);
                     return yfalse;
                 }
                 ylog_path_size = strlen(log_dir) + strlen(log_file) + 1;
-                if (ylog_path_size>YLOG_MAX_PATH_LENGTH) {
+                if (ylog_path_size > YLOG_MAX_PATH_LENGTH) {
                     YUKI_LOG_FATAL("log dir '%s' is so long", log_dir);
                     return yfalse;
                 }
-                snprintf(g_ylog_real_files[index], ylog_path_size, "%s%s", log_dir, log_file);
-                g_ylog_files[index] = fopen(g_ylog_real_files[index], "a");
+                snprintf(g_ylog_real_files[level], YLOG_MAX_PATH_LENGTH, "%s/%s", log_dir, log_file);
+                g_ylog_files[level] = fopen(g_ylog_real_files[level], "a");
                 if (!g_ylog_file) {
-                    YUKI_LOG_FATAL("cannot open log path '%s' for write", g_ylog_real_files[index]);
+                    YUKI_LOG_FATAL("cannot open log path '%s' for write", g_ylog_real_files[level]);
                     return yfalse;
                 }
             }
@@ -202,7 +182,9 @@ void _ylog_write(ylog_level_t level, yint32_t logid, const char * log_header, co
         ysize_t offset = 0;
         time_t t = time(NULL);
         offset += strftime(buf + offset, size - offset, "%Y-%m-%d %H:%M:%S ", localtime(&t));
-        offset += snprintf(buf + offset, size - offset, "%s [logid:%d] ", log_header,logid);
+        offset += snprintf(buf + offset, size - offset, "%s ", log_header);
+        if (level == YLOG_LEVEL_DEBUG)              
+            offset += snprintf(buf + offset, size - offset, "[logid:%d] ", logid);
 
         va_list args;
         va_start(args, pattern);
@@ -220,6 +202,7 @@ void _ylog_write(ylog_level_t level, yint32_t logid, const char * log_header, co
         }
 
         fputs(buf, log_file);
+        ylog_flush(level);
     }
 }
 

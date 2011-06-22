@@ -14,6 +14,7 @@ extern "C" {
 #define _YTABLE_SQL_VERB_INSERT "INSERT INTO "
 #define _YTABLE_SQL_VERB_DELETE "DELETE FROM "
 #define _YTABLE_SQL_COMMA ", "
+#define _YTABLE_SQL_DOT   "."
 #define _YTABLE_SQL_KEYWORD_FROM " FROM "
 #define _YTABLE_SQL_KEYWORD_SET " SET "
 #define _YTABLE_SQL_KEYWORD_VALUES " VALUES "
@@ -43,6 +44,8 @@ extern "C" {
 #define ytable_fetch_one(ytable, result) _ytable_fetch_one((ytable), &(result))
 #define ytable_fetch_all(ytable, result) _ytable_fetch_all((ytable), &(result))
 #define ytable_fetch_insert_id(ytable, insert_id) _ytable_fetch_insert_id((ytable), &(insert_id))
+#define ytable_pin(ytable) _ytable_pin((ytable))
+#define ytable_unpin(ytable) _ytable_unpin((ytable))
 
 #define YTABLE_SELECT(ytable, ...) do { \
         yvar_t _raw_select_fields[] = { \
@@ -82,9 +85,19 @@ ytable_t * _ytable_where_using_triple_array(ytable_t * ytable, yvar_triple_array
 
 ybool_t _ytable_fetch_one(ytable_t * ytable, yvar_t ** result);
 ybool_t _ytable_fetch_all(ytable_t * ytable, yvar_t ** result);
+//const char * _ytable_fetch_db_string(ytable_t * ytable);
+ytable_t * _ytable_pin(ytable_t * ytable);
+ybool_t _ytable_unpin(ytable_t * ytable);
 
 ybool_t _ytable_fetch_insert_id(ytable_t * ytable, yvar_t * insert_id);
 ytable_error_t ytable_last_error(const ytable_t * ytable);
+
+ytable_t * ytable_set_option(ytable_t * ytable, ytable_option_t option, const yvar_t * value);
+
+void ytable_thread_shutdown();
+
+ybool_t ytable_fetch_sql_one(ytable_t * ytable, char ** sql);
+ybool_t ytable_fetch_sql_all(ytable_t * ytable, char ** sql);
 
 #ifdef __cplusplus
 }

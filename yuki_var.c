@@ -201,7 +201,7 @@ static ybool_t _yvar_clone_internal_element(ybuffer_t * buffer, yvar_t * new_var
 
             new_var->data.ymap_data.keys = keys;
             new_var->data.ymap_data.values = values;
-            
+
             break;
         }
         case YVAR_TYPE_CSTR:
@@ -322,6 +322,24 @@ static ybool_t _yvar_list_push_back_internal(ybuffer_t * buffer, yvar_t * list, 
     return ytrue;
 }
 
+#define _YUKI_YVAR_TO_TYPE_FUNCTION(type) \
+    y##type##_t _yvar_to_##type(const yvar_t * yvar) \
+    { \
+        y##type##_t output; \
+        _yvar_get_##type(yvar, &output); \
+        return output; \
+    }
+
+_YUKI_YVAR_TO_TYPE_FUNCTION(bool)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int8)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint8)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int16)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint16)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int32)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint32)
+_YUKI_YVAR_TO_TYPE_FUNCTION(int64)
+_YUKI_YVAR_TO_TYPE_FUNCTION(uint64)
+
 ybool_t _yvar_get_bool(const yvar_t * yvar, ybool_t * output)
 {
     if (!yvar || !output) {
@@ -375,7 +393,7 @@ ybool_t _yvar_get_bool(const yvar_t * yvar, ybool_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -471,7 +489,7 @@ ybool_t _yvar_get_int8(const yvar_t * yvar, yint8_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -567,7 +585,7 @@ ybool_t _yvar_get_uint8(const yvar_t * yvar, yuint8_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -653,7 +671,7 @@ ybool_t _yvar_get_int16(const yvar_t * yvar, yint16_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -744,7 +762,7 @@ ybool_t _yvar_get_uint16(const yvar_t * yvar, yuint16_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -820,7 +838,7 @@ ybool_t _yvar_get_int32(const yvar_t * yvar, yint32_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -906,7 +924,7 @@ ybool_t _yvar_get_uint32(const yvar_t * yvar, yuint32_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -972,7 +990,7 @@ ybool_t _yvar_get_int64(const yvar_t * yvar, yint64_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -1053,7 +1071,7 @@ ybool_t _yvar_get_uint64(const yvar_t * yvar, yuint64_t * output)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 
@@ -1107,7 +1125,7 @@ ybool_t _yvar_get_cstr(const yvar_t * yvar, char * output, ysize_t size)
             YUKI_LOG_FATAL("impossible type value %d", yvar->type);
             return yfalse;
     }
-    
+
     return ytrue;
 }
 

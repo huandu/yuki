@@ -178,6 +178,7 @@ typedef enum _ytable_hash_method_t {
     YTABLE_HASH_METHOD_INVALID,
     YTABLE_HASH_METHOD_DEFAULT,
     YTABLE_HASH_METHOD_KEY_HASH,
+    YTABLE_HASH_METHOD_MOD_HASH,
     YTABLE_HASH_METHOD_MAX,
 } ytable_hash_method_t;
 
@@ -207,19 +208,25 @@ typedef enum _ytable_error_t {
     YTABLE_ERROR_UNKNOWN,
 } ytable_error_t;
 
+typedef enum _ytable_option_t {
+    YTABLE_OPTION_NULL,
+    YTABLE_OPTION_HASH_VALUE,
+    YTABLE_OPTION_MAX,
+} ytable_option_t;
+
 // declared in yuki_table.c to avoid dependence on <mysql.h>
 struct _ytable_connection_t;
 
 typedef struct _ytable_t {
     yvar_t * fields;
     yvar_t * conditions;
-    yvar_t * hash_value;
+    yuint64_t hash_value;
     yvar_t * order_by;
     struct _ytable_connection_t * active_connection;
     yint32_t limit;
     yint32_t offset;
     ysize_t affected_rows;
-    yvar_t sql;
+    char * sql;
     ytable_verb_t verb;
     ytable_error_t last_error;
     ysize_t ytable_index; /**< index in ytable conf. */
